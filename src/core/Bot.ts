@@ -129,7 +129,7 @@ export class Bot extends EventEmitter {
     this.pathfinder = new Pathfinder(this.world, {
       maxNodes: 16000, allowDiagonal: true, jumpHeight: 1, fallHeight: 4, avoidLiquid: true,
     });
-    this.pathFollower = new PathFollower(this, { sprint: true, jumpObstacles: true });
+    this.pathFollower = new PathFollower(this, { sprint: true, jumpObstacles: true, humanized: true, pauseChance: 0.035 });
     this.agent = new Agent(this);
     this.agent.attachPathfinder(this.pathfinder);
     this.inventory = new Inventory();

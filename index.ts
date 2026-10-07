@@ -135,3 +135,9 @@ export { createChatBrain, ChatBrain } from "./src/chat/ChatBrain";
 export type { ChatBrainOptions } from "./src/chat/ChatBrain";
 export { chatToString, parseChatPacket } from "./src/chat/Chat";
 export type { ChatComponent } from "./src/chat/Chat";
+
+export { createHumanBehavior, HumanBehavior } from "./src/human/HumanBehavior";
+export type { HumanBehaviorOptions } from "./src/human/HumanBehavior";
+export { createPersonality, reactionDelayMs, shouldAct } from "./src/human/Personality";
+export type { PersonalityTraits, PersonalityPreset } from "./src/human/Personality";
+

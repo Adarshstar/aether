@@ -1,3 +1,13 @@
+
+## [1.5.1-alpha] — 2026-10-07
+
+### Human-like players
+- Personality system (presets + traits)
+- HumanBehavior: look-around, fidget, hesitation, ambient chat
+- Humanized PathFollower (pauses, variable sprint, look-ahead)
+- Decision mode `autonomous` driven by personality
+- LLM planner rules for casual human play
+
 # Changelog
 
 ## [1.5.0-alpha] — 2026-10-07

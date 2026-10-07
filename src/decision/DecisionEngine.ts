@@ -7,6 +7,7 @@
 import type { Bot } from "../core/Bot";
 import type { Agent } from "../ai/Agent";
 import type { ExploreModule } from "../explore/Explore";
+import type { HumanBehavior } from "../human/HumanBehavior";
 import { distance } from "../types";
 
 export type DecisionMode =
@@ -15,7 +16,8 @@ export type DecisionMode =
   | "follow"
   | "goto"
   | "guard"
-  | "ai";
+  | "ai"
+  | "autonomous";
 
 export interface DecisionEngineOptions {
   tickMs?: number;
@@ -27,12 +29,14 @@ export class DecisionEngine {
   private bot: Bot;
   private agent: Agent | null = null;
   private explore: ExploreModule | null = null;
+  private human: HumanBehavior | null = null;
   private mode: DecisionMode = "idle";
   private meta: Record<string, any> = {};
   private timer: ReturnType<typeof setInterval> | null = null;
   private tickMs: number;
   private guardRange: number;
   private running = false;
+  private lastAutoPick = 0;
 
   constructor(bot: Bot, opts: DecisionEngineOptions = {}) {
     this.bot = bot;
@@ -42,6 +46,7 @@ export class DecisionEngine {
 
   attachAgent(agent: Agent) { this.agent = agent; }
   attachExplore(explore: ExploreModule) { this.explore = explore; }
+  attachHuman(human: HumanBehavior) { this.human = human; }
 
   getMode() { return this.mode; }
   getMeta() { return { ...this.meta }; }
@@ -74,9 +79,14 @@ export class DecisionEngine {
 
   private async tick() {
     if (!this.running || !this.bot.entity) return;
+    if (this.human?.isHesitating()) return;
 
     switch (this.mode) {
       case "idle":
+        // Personality may self-start exploring
+        if (this.human?.wantsExplore()) {
+          this.setMode("explore", { radius: 32 + Math.floor(Math.random() * 40) });
+        }
         return;
       case "explore":
         await this.tickExplore();
@@ -91,18 +101,73 @@ export class DecisionEngine {
         await this.tickGuard();
         break;
       case "ai":
-        // LLM agent owns planning; decision engine only keeps survival pressure
         await this.tickSurvivalHints();
         break;
+      case "autonomous":
+        await this.tickAutonomous();
+        break;
+    }
+  }
+
+  /** Personality-driven free play: survive, socialize, explore, or fight */
+  private async tickAutonomous() {
+    await this.tickSurvivalHints();
+    const now = Date.now();
+    if (now - this.lastAutoPick < 4000) return;
+    this.lastAutoPick = now;
+
+    const p = this.human?.personality;
+    const aggression = p?.aggression ?? 0.35;
+    const curiosity = p?.curiosity ?? 0.5;
+    const sociability = p?.sociability ?? 0.5;
+
+    // Nearby hostile?
+    const hostile = this.bot.nearestEntity((e) => {
+      if (e.type === "player" || e.type === "item") return false;
+      return /zombie|skeleton|creeper|spider|pillager|drowned|husk|stray/i.test(e.type || "");
+    });
+    if (hostile && this.human?.wantsFight()) {
+      this.bot.lookAt(hostile.position);
+      if (Math.random() < aggression) this.bot.combat.attack(hostile);
+      return;
+    }
+
+    // Nearby player — social look / approach
+    const player = this.bot.nearestEntity((e) => e.type === "player");
+    if (player && this.bot.entity && Math.random() < sociability * 0.3) {
+      this.bot.lookAt({
+        x: player.position.x,
+        y: player.position.y + 1.6,
+        z: player.position.z,
+      });
+      const d = distance(this.bot.entity.position, player.position);
+      if (d > 4 && d < 16 && Math.random() < sociability * 0.2) {
+        await this.bot.goTo({
+          type: "near",
+          x: player.position.x,
+          y: player.position.y,
+          z: player.position.z,
+          range: 3,
+        });
+      }
+      return;
+    }
+
+    // Explore
+    if (Math.random() < curiosity * 0.5) {
+      await this.tickExplore();
     }
   }
 
   private async tickSurvivalHints() {
     if (this.bot.food <= 6) {
+      await this.human?.react(250);
       await this.bot.eat(true).catch(() => {});
     }
     if (this.bot.health <= 8) {
-      this.bot.chat("Low health!");
+      this.human?.hesitate(500);
+      // Casual human phrasing
+      if (Math.random() < 0.4) this.bot.chat(Math.random() < 0.5 ? "ow" : "low hp");
     }
   }
 

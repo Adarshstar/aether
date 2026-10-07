@@ -1,6 +1,5 @@
 /**
- * High-level AI Bot factory — full Aether stack:
- * createBot + LLM planner + decision engine + commands + explore + scripts + chat brain
+ * High-level AI Bot factory — full Aether stack with human-like behavior
  */
 
 import { createBot } from "../core/createBot";
@@ -14,9 +13,13 @@ import { createExplore, type ExploreModule } from "../explore/Explore";
 import { createScriptRunner, type ScriptRunner } from "../script/ScriptRunner";
 import { createChatBrain, type ChatBrain } from "../chat/ChatBrain";
 import { createSurvival, type Survival } from "../survival/Survival";
+import {
+  createHumanBehavior,
+  type HumanBehavior,
+} from "../human/HumanBehavior";
+import type { PersonalityPreset, PersonalityTraits } from "../human/Personality";
 
 export interface AIBotOptions extends BotOptions {
-  /** OpenAI-compatible API key */
   aiApiKey: string;
   aiBaseUrl?: string;
   aiModel?: string;
@@ -26,14 +29,17 @@ export interface AIBotOptions extends BotOptions {
   autoStartAgent?: boolean;
   systemPrompt?: string;
   headers?: Record<string, string>;
-  /** Enable chat commands (!goto, !explore, …) default true */
   enableCommands?: boolean;
-  /** AI replies to player chat default true */
   enableChatBrain?: boolean;
-  /** Start decision engine on spawn default true */
   enableDecision?: boolean;
   commandPrefix?: string;
   commandAllowUsers?: string[];
+  /** Human personality preset or partial traits */
+  personality?: PersonalityPreset | Partial<PersonalityTraits>;
+  /** Start in autonomous human-like freeplay (default true with AI) */
+  autonomous?: boolean;
+  /** Ambient fidget / look-around (default true) */
+  humanFidget?: boolean;
 }
 
 export interface AIBot extends Bot {
@@ -44,6 +50,7 @@ export interface AIBot extends Bot {
   scripts: ScriptRunner;
   chatBrain: ChatBrain;
   survival: Survival;
+  human: HumanBehavior;
   startAI(): Promise<void>;
   stopAI(): void;
   askAI(prompt: string): Promise<string>;
@@ -58,7 +65,7 @@ export function createAIBot(options: AIBotOptions): AIBot {
     apiKey: options.aiApiKey,
     baseUrl: options.aiBaseUrl,
     model: options.aiModel ?? "gpt-4o-mini",
-    temperature: options.temperature ?? 0.4,
+    temperature: options.temperature ?? 0.55,
     maxTokens: options.maxTokens ?? 800,
     systemPrompt: options.systemPrompt,
     headers: options.headers,
@@ -66,13 +73,19 @@ export function createAIBot(options: AIBotOptions): AIBot {
 
   bot.llm = new LLMClient(llmOpts);
   bot.agent.setPlanner(createLLMPlanner(llmOpts));
-  if (options.agentTickMs) bot.agent.setTickInterval(options.agentTickMs);
-  else bot.agent.setTickInterval(2000); // slightly faster default
+  bot.agent.setTickInterval(options.agentTickMs ?? 2200);
+
+  bot.human = createHumanBehavior(bot, {
+    personality: options.personality ?? "default",
+    fidget: options.humanFidget !== false,
+    ambientChat: true,
+  });
 
   bot.explore = createExplore(bot);
   bot.decision = createDecisionEngine(bot, { tickMs: 450 });
   bot.decision.attachAgent(bot.agent);
   bot.decision.attachExplore(bot.explore);
+  bot.decision.attachHuman(bot.human);
 
   bot.scripts = createScriptRunner(bot);
   bot.commands = createCommandRouter(bot, {
@@ -81,24 +94,25 @@ export function createAIBot(options: AIBotOptions): AIBot {
     decision: bot.decision,
     scripts: bot.scripts,
   });
-  if (options.enableCommands === false) {
-    /* still constructed for API; chat handler only if attach was called — attach always for now */
-  }
 
   bot.chatBrain = createChatBrain(
     bot,
     options.enableChatBrain === false ? null : bot.llm,
-    { requireMention: false, replyChance: 0.3 }
+    { requireMention: false, replyChance: 0.35 * (bot.human.personality.sociability + 0.2) }
   );
 
   bot.survival = createSurvival(bot, { autoEat: true });
   bot.survival.attachAgent(bot.agent);
 
   bot.startAI = async () => {
-    console.log("[Aether AI] Agent + decision + survival starting");
+    console.log("[Aether AI] Human + agent + decision starting");
+    bot.human.start();
     bot.survival.start();
     bot.decision.start();
-    bot.decision.setMode("ai", {});
+    const mode = options.autonomous === false ? "ai" : "autonomous";
+    bot.decision.setMode(mode as any, {});
+    // Still run LLM planner for richer decisions when mode is ai;
+    // autonomous uses personality; also start agent for hybrid
     await bot.agent.start();
   };
 
@@ -106,12 +120,13 @@ export function createAIBot(options: AIBotOptions): AIBot {
     bot.agent.stop();
     bot.decision.stop();
     bot.survival.stop();
+    bot.human.stop();
     console.log("[Aether AI] Stopped");
   };
 
   bot.askAI = async (prompt: string) => {
     return bot.llm.complete(
-      "You are an assistant for a Minecraft Bedrock bot (Aether). Be concise.",
+      "You are Aether, a human-like Minecraft Bedrock player. Be concise and casual.",
       prompt
     );
   };
@@ -122,13 +137,12 @@ export function createAIBot(options: AIBotOptions): AIBot {
     });
   }
 
-  // Optional: chat "Aether, explore" style natural language without !
   bot.on("chat", (username, message) => {
     if (username === bot.username) return;
     const m = message.toLowerCase();
     if (m.includes("explore") && (m.includes("aether") || m.includes(bot.username.toLowerCase()))) {
       bot.decision.setMode("explore", { radius: 48 });
-      bot.chat("Exploring!");
+      bot.chat("on it");
     }
   });
 

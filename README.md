@@ -1,62 +1,41 @@
-# Aether 1.5.0-alpha — BDS AI Bot Client Engine
+# Aether 1.5.1-alpha — Human-like BDS AI Bot Engine
 
-AI bot client for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**, NetherNet).
+AI bot client for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**).
 
-## Highlights (1.5.0)
+## Human-like behavior (1.5.1)
 
-- **Full Xbox / Microsoft login** — device code, refresh token, disk cache (`.aether-auth/`)
-- **Decision engine** — modes: idle · explore · follow · goto · guard · ai
-- **Chat commands** — `!goto` `!explore` `!follow` `!come` `!guard` `!eat` `!stop` `!ai` `!script` `!status`
-- **Custom scripts** — register named behaviors
-- **Chat brain** — optional AI replies to players
-- **Explore module** — autonomous wandering
-- Faster pathfinder defaults + real UseItem eating (1.4.3)
+Bots are no longer pure automata:
 
-## Quick start (offline + AI)
-
-```bash
-AI_API_KEY=sk-... bun run examples/full-agent.ts
-```
-
-## Microsoft / Xbox login
-
-```bash
-bun run examples/microsoft-login.ts
-# First run: open the URL and enter the code
-# Later runs: cached refresh token
-```
+- **Personalities** — explorer, guard, social, coward, berserker, afk_buddy
+- **Human movement** — path pauses, variable sprint, look-ahead, aim noise
+- **Fidget & attention** — look around, glance at players, idle jump/sneak
+- **Hesitation** — reaction delays, freeze when hurt
+- **Autonomous mode** — personality picks explore / socialize / fight
+- **LLM prompt** tuned for casual player-like chat and imperfect plans
 
 ```ts
-const bot = createBot({
-  host: "play.example.com",
-  username: "you@outlook.com",
-  auth: "microsoft",
-  offline: false,
-  persistTokens: true,
+const bot = createAIBot({
+  host: "127.0.0.1",
+  username: "Aether",
+  offline: true,
+  aiApiKey: process.env.AI_API_KEY!,
+  personality: "explorer", // or "social" | "guard" | ...
+  autonomous: true,
 });
 ```
 
-## Commands (in-game chat)
+## Also included (1.5.0+)
 
-| Command | Effect |
-|---------|--------|
-| `!help` | List commands |
-| `!status` | HP, food, position |
-| `!goto x y z` | Pathfind |
-| `!explore [radius]` | Wander |
-| `!follow <player>` / `!come` | Follow |
-| `!guard` | Attack nearby hostiles |
-| `!eat` / `!stop` | Eat / stop |
-| `!ai <task>` | Hand control to LLM mode |
-| `!script <name>` | Run custom script |
+Xbox login + token cache · decision modes · `!` commands · scripts · explore · chat brain · real UseItem eating
 
-## Live BDS join
-
-See [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md) (WebRTC / werift required for real sessions).
+```bash
+AI_API_KEY=sk-... bun run examples/full-agent.ts
+bun run examples/microsoft-login.ts
+```
 
 ## Docs
 
-- [CHANGELOG.md](CHANGELOG.md) · [ROADMAP.md](ROADMAP.md) · [HANDOFF.md](HANDOFF.md) · [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md)
+[CHANGELOG](CHANGELOG.md) · [ROADMAP](ROADMAP.md) · [LIVE_JOIN](docs/LIVE_JOIN.md) · [HANDOFF](HANDOFF.md)
 
 ## License
 
