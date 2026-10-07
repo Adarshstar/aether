@@ -1,3 +1,13 @@
+## [1.9.0-alpha] — 2026-10-07
+
+### Physics engine upgrade
+- Separating-axis AABB collision (X/Y/Z)
+- Auto step-up, multi-point ground sampling
+- Water/lava drag & buoyancy, ladder/scaffold climb
+- Ice/slime friction, velocity acceleration (not hard-set)
+- Fixed substeps, terminal velocity, raycast helper
+- `bot.raycastBlock()`; physicsTick integration improved
+
 ## [1.8.1-alpha] — 2026-10-07
 
 ### Architecture + CI

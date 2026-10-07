@@ -810,6 +810,7 @@ export class Bot extends EventEmitter {
         sprint: this.getControlState("sprint"),
         sneak: this.getControlState("sneak"),
       };
+      const prev = this.entity as any;
       const next = this.physicsEngine.simulate(
         {
           position: Vec3Vec.from(this.entity.position),
@@ -817,26 +818,36 @@ export class Bot extends EventEmitter {
           onGround: this.entity.onGround,
           yaw: this.entity.yaw,
           pitch: this.entity.pitch,
+          inWater: prev.inWater,
+          inLava: prev.inLava,
+          onClimbable: prev.onClimbable,
         },
-        controls
+        controls,
+        this.PHYSICS_TIMESTEP
       );
       this.entity.position = { x: next.position.x, y: next.position.y, z: next.position.z };
       this.entity.velocity = { x: next.velocity.x, y: next.velocity.y, z: next.velocity.z };
       this.entity.onGround = next.onGround;
+      prev.inWater = next.inWater;
+      prev.inLava = next.inLava;
+      prev.onClimbable = next.onClimbable;
       this.session?.setPosition(this.entity.position);
       this.session?.setLook(this.entity.yaw, this.entity.pitch);
-      this.session?.setControls({
-        forward: this.getControlState("forward"),
-        back: this.getControlState("back"),
-        left: this.getControlState("left"),
-        right: this.getControlState("right"),
-        jump: this.getControlState("jump"),
-        sprint: this.getControlState("sprint"),
-        sneak: this.getControlState("sneak"),
-      });
+      this.session?.setControls({ ...controls });
       this.emit("move");
     }
     this.emit("physicsTick");
+  }
+
+  /** Block under crosshair (physics raycast) */
+  raycastBlock(maxDist = 5) {
+    if (!this.entity) return null;
+    return this.physicsEngine.raycast(
+      { x: this.entity.position.x, y: this.entity.position.y + 1.62, z: this.entity.position.z },
+      this.entity.yaw,
+      this.entity.pitch,
+      maxDist
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
