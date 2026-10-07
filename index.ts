@@ -147,3 +147,9 @@ export type { SpatialPoint } from "./src/math/SpatialIndex";
 export { PerfMonitor, globalPerf } from "./src/core/PerfMonitor";
 export { createTaskQueue, TaskQueue } from "./src/tasks/TaskQueue";
 export type { Task } from "./src/tasks/TaskQueue";
+
+export { encodeItemStackRequest, buildTransferRequest, StackRequestAction, nextStackRequestId } from "./src/protocol/itemStackRequest";
+export type { StackRequestSlotInfo } from "./src/protocol/itemStackRequest";
+export { applyStartGameData, applyBlockPalette, applyItemPalette } from "./src/registry/applyStartGame";
+export type { PaletteEntry } from "./src/registry/applyStartGame";
+export { createFarm, Farm } from "./src/farm/Farm";

@@ -31,6 +31,7 @@ import { CollectBlock } from "../collect/CollectBlock";
 import { ToolManager } from "../tool/Tool";
 import { StateMachine } from "../statemachine/StateMachine";
 import { RecipeRegistry } from "../recipe/Recipe";
+import { createFarm, type Farm } from "../farm/Farm";
 import { BiomeRegistry } from "../biome/Biome";
 import { AETHER_VERSION, AETHER_NAME, TARGET_PROTOCOL } from "./version";
 import { SpatialIndex } from "../math/SpatialIndex";
@@ -62,6 +63,7 @@ export class Bot extends EventEmitter {
   /** Direct registry access (fast, no plugin layer) */
   entityIndex = new SpatialIndex<{ id: number; x: number; y: number; z: number; ref: any }>(8);
   tasks!: TaskQueue;
+  farm!: Farm;
   readonly blocks = BlockRegistry;
   readonly entityTypes = EntityRegistry;
   readonly recipes = RecipeRegistry;
@@ -147,6 +149,7 @@ export class Bot extends EventEmitter {
     this.tools = new ToolManager(this);
     this.stateMachine = new StateMachine();
     this.tasks = createTaskQueue(this);
+    this.farm = createFarm(this);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -311,6 +314,50 @@ export class Bot extends EventEmitter {
       this.emit("health");
     });
     this.session.on("inventory", (data) => this.emit("inventory", data));
+    this.session.on("entity_add", (data) => {
+      const id = Number(data.id) || 0;
+      const pos = data.position ?? { x: 0, y: 0, z: 0 };
+      const ent = {
+        id,
+        type: String(data.type ?? "unknown"),
+        position: { ...pos },
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: data.yaw ?? 0,
+        pitch: data.pitch ?? 0,
+        onGround: true,
+      };
+      this.entities.set(id, ent);
+      this.entityIndex.upsert({ id, x: pos.x, y: pos.y, z: pos.z, ref: ent });
+      this.emit("entitySpawn", ent);
+    });
+    this.session.on("player_add", (data) => {
+      const id = Number(data.id) || 0;
+      const pos = data.position ?? { x: 0, y: 0, z: 0 };
+      const ent = {
+        id,
+        type: "player",
+        username: data.username,
+        position: { ...pos },
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        onGround: true,
+      };
+      this.entities.set(id, ent);
+      this.players.set(data.username ?? `player_${id}`, ent);
+      this.entityIndex.upsert({ id, x: pos.x, y: pos.y, z: pos.z, ref: ent });
+      this.emit("entitySpawn", ent);
+    });
+    this.session.on("entity_remove", (id) => {
+      this.removeEntity(Number(id));
+    });
+    this.session.on("container_open", (data) => {
+      this.emit("windowOpen", data);
+    });
+    this.session.on("container_close", (id) => {
+      this.windows.close(Number(id));
+      this.emit("windowClose", id);
+    });
 
     this.emit("login");
     await this.session.startLogin();
@@ -568,7 +615,14 @@ export class Bot extends EventEmitter {
     const id = typeof itemOrId === "number" ? itemOrId : itemOrId.networkId;
     const found = this.inventory.findItem((it) => it.networkId === id);
     if (!found) throw new Error(`Item ${id} not in inventory`);
-    this.inventory.selectHotbar(Math.min(8, found.slot));
+    const slot = Math.min(8, found.slot);
+    this.inventory.selectHotbar(slot);
+    if (this.session && typeof (this.session as any).sendMobEquipment === "function") {
+      (this.session as any).sendMobEquipment(slot, {
+        networkId: found.item.networkId,
+        count: found.item.count,
+      });
+    }
   }
 
   /**
@@ -599,16 +653,32 @@ export class Bot extends EventEmitter {
 
   /** Eat food via AutoEat (real UseItem packets). */
 
-  /** Craft using RecipeRegistry against local inventory (client-side simulation). */
+  /**
+   * Craft using RecipeRegistry. Updates local inventory always;
+   * on a live session also sends ItemStackRequest when possible.
+   */
   craft(recipeId: string): boolean {
     const recipe = RecipeRegistry.get(recipeId);
     if (!recipe) {
       console.warn(`[Bot] Unknown recipe ${recipeId}`);
       return false;
     }
+    if (!RecipeRegistry.canCraft(recipe, this.inventory)) {
+      console.warn(`[Bot] Cannot craft ${recipeId} — missing ingredients`);
+      return false;
+    }
+    // Live path: notify server (recipe network id unknown → creative-style create result)
+    if (this.session && typeof (this.session as any).sendItemStackRequest === "function") {
+      try {
+        (this.session as any).sendItemStackRequest([
+          { type: "craft_creative", itemId: recipe.result.networkId },
+        ]);
+      } catch (e) {
+        console.warn("[Bot] ItemStackRequest craft failed", e);
+      }
+    }
     const ok = RecipeRegistry.craft(recipe, this.inventory);
     if (ok) console.log(`[Bot] Crafted ${recipeId}`);
-    else console.warn(`[Bot] Cannot craft ${recipeId} — missing ingredients`);
     return ok;
   }
 

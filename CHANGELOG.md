@@ -1,3 +1,12 @@
+## [1.7.0-alpha] — 2026-10-07
+
+### Gap fill
+- ItemStackRequest encoder (take/place/swap/consume/craft)
+- StartGame block/item palette → registries
+- BDSSession: AddEntity/AddPlayer/RemoveEntity, ContainerOpen/Close, CraftingData
+- Bot wires entities into spatial index; craft sends stack request; equip → MobEquipment
+- Farm module (harvestNearby, plantSeed)
+
 ## [1.6.1-alpha] — 2026-10-07
 
 - Live join validation harness (`examples/live-join-validate.ts`, `bun run validate:join`)

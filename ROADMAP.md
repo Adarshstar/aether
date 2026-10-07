@@ -1,15 +1,20 @@
 # Aether Roadmap
 
-**Current:** 1.5.0-alpha · **Target BDS:** 1.26.52.3 / protocol 2193
+**Current:** 1.7.0-alpha · **Target:** BDS 1.26.52.3 / protocol 2193
 
-## Done in 1.5.0
-- [x] Full Xbox login + token cache
-- [x] Decision engine + commands + scripts + explore + chat brain
-- [x] AIBot integration of the full stack
+## Gaps closed in 1.7.0
+- [x] ItemStackRequest encoder + transfer/craft hooks
+- [x] StartGame palette → registry merge
+- [x] Entity add/remove + player add → Bot spatial index
+- [x] Container open/close events
+- [x] CraftingData recipe ingest
+- [x] MobEquipment on equip
+- [x] Farm module (harvest / plant)
 
-## Next
-- [ ] Live BDS join validation (docs/LIVE_JOIN.md)
-- [ ] Bedrock-specific Minecraft services chain fetch if Mojang chain empty
-- [ ] Crafting / farming goal planners
+## Remaining
+- [ ] Live BDS E2E with werift on real hardware
+- [ ] Full ItemStackResponse handling + recipe network ids from CraftingData
+- [ ] Villager trading
+- [ ] Schematic builder
 - [ ] Multi-bot coordination
-- [ ] CI against BDS docker
+- [ ] CI + BDS docker

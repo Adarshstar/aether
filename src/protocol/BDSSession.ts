@@ -35,6 +35,9 @@ import {
   applySubChunkPacketToWorld,
   type SubChunkBody,
 } from "./subchunk";
+import { applyStartGameData } from "../registry/applyStartGame";
+import { encodeItemStackRequest, buildTransferRequest } from "./itemStackRequest";
+import { RecipeRegistry } from "../recipe/Recipe";
 
 export interface BDSSessionOptions {
   transport: NetherNetTransport;
@@ -126,7 +129,55 @@ export class BDSSession extends EventEmitter {
       if (data.entityId) this.entityId = data.entityId;
       if (data.spawn) this.position = { ...data.spawn };
       this.lastPosition = { ...this.position };
+      try { applyStartGameData(data); } catch { /* palette optional */ }
       this.emit("start_game", data);
+    });
+
+    this.client.onPacket(PacketId.AddEntity, (data) => {
+      this.emit("entity_add", {
+        id: data.runtimeEntityId ?? data.entityRuntimeId ?? data.id,
+        type: data.type ?? data.entityType ?? "unknown",
+        position: data.position ?? data.pos ?? { x: 0, y: 0, z: 0 },
+        yaw: data.yaw ?? 0,
+        pitch: data.pitch ?? 0,
+      });
+    });
+
+    this.client.onPacket(PacketId.AddPlayer, (data) => {
+      this.emit("player_add", {
+        id: data.runtimeEntityId ?? data.id,
+        username: data.username ?? data.name ?? "player",
+        position: data.position ?? { x: 0, y: 0, z: 0 },
+      });
+    });
+
+    this.client.onPacket(PacketId.RemoveEntity, (data) => {
+      this.emit("entity_remove", data.entityRuntimeId ?? data.runtimeEntityId ?? data.id);
+    });
+
+    this.client.onPacket(PacketId.ContainerOpen, (data) => {
+      this.emit("container_open", {
+        windowId: data.windowId,
+        type: data.type ?? data.windowType,
+        position: data.position,
+      });
+    });
+
+    this.client.onPacket(PacketId.ContainerClose, (data) => {
+      this.emit("container_close", data.windowId);
+    });
+
+    this.client.onPacket(PacketId.CraftingData, (data) => {
+      // Register shapeless/shaped recipes if server sent a list
+      const list = data.recipes ?? data.craftingRecipes ?? [];
+      if (Array.isArray(list)) {
+        for (const r of list) {
+          try {
+            if (r.id && r.result) RecipeRegistry.register(r);
+          } catch { /* ignore malformed */ }
+        }
+        this.emit("crafting_data", { count: list.length });
+      }
     });
 
     this.client.onPacket(PacketId.LevelChunk, (data) => {
@@ -506,7 +557,43 @@ export class BDSSession extends EventEmitter {
     });
   }
 
+  /** Send ItemStackRequest for live inventory ops */
+  sendItemStackRequest(actions: Parameters<typeof encodeItemStackRequest>[0]["actions"]) {
+    const pkt = encodeItemStackRequest({ actions });
+    this.client.sendRaw(encodeGamePacket(pkt.id, { raw: pkt.payload }));
+    return pkt.requestId;
+  }
+
+  transferSlots(fromContainer: number, fromSlot: number, toContainer: number, toSlot: number, count: number) {
+    const pkt = buildTransferRequest(
+      { containerId: fromContainer, slot: fromSlot },
+      { containerId: toContainer, slot: toSlot },
+      count
+    );
+    this.client.sendRaw(encodeGamePacket(pkt.id, { raw: pkt.payload }));
+    return pkt.requestId;
+  }
+
+  /** Notify server of hotbar selection / held item */
+  sendMobEquipment(hotbarSlot: number, item: { networkId: number; count: number }) {
+    this.client.send(PacketId.MobEquipment, {
+      runtimeEntityId: this.runtimeEntityId,
+      item,
+      slot: hotbarSlot,
+      selectedSlot: hotbarSlot,
+      windowId: 0,
+    });
+  }
+
+  closeContainer(windowId: number) {
+    this.client.send(PacketId.ContainerClose, { windowId, server: false });
+  }
+
   dispose() {
     this.stopInputLoop();
+    if (this.subChunkRetryTimer) {
+      clearInterval(this.subChunkRetryTimer);
+      this.subChunkRetryTimer = null;
+    }
   }
 }

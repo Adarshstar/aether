@@ -1,34 +1,23 @@
-# Aether 1.6.1-alpha — Advanced Bedrock AI Bot Engine
+# Aether 1.7.0-alpha
 
-For **BDS 1.26.52.3** / protocol **2193** / NetherNet.
+Bedrock AI bot engine for **BDS 1.26.52.3** (protocol **2193**, NetherNet).
 
-## This release
+## Gaps filled (1.7)
 
-| Track | What landed |
-|-------|-------------|
-| **Live join validation** | `bun run validate:join` — probe + mock WebRTC + optional live werift |
-| **Registries** | Expanded blocks (tags/ores/containers) + items (food/tools/materials) |
-| **Crafting + UI** | Recipe craft simulation, chest/crafting/furnace windows, `bot.craft()` |
-| **Benchmarks** | `bun run bench:path` — pathfinder latency baselines |
-
-## Quick commands
+- **ItemStackRequest** for live inventory moves / craft hooks  
+- **StartGame palette** merges into block/item registries  
+- **Entities** from AddEntity/AddPlayer tracked in spatial index  
+- **Containers** open/close events  
+- **Farm** harvest/plant helpers  
+- **equip()** sends MobEquipment  
 
 ```bash
 bun run validate:join
 bun run bench:path
 bun test
-AI_API_KEY=sk-... bun run examples/full-agent.ts
 ```
 
-```ts
-bot.craft("stick");
-const chest = bot.openChest();
-chest.setSlot(0, { networkId: 4, count: 32 } as any);
-```
-
-## Docs
-
-[LIVE_JOIN](docs/LIVE_JOIN.md) · [CHANGELOG](CHANGELOG.md) · [ROADMAP](ROADMAP.md)
+See [ROADMAP.md](ROADMAP.md) · [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md)
 
 ## License
 
