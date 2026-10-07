@@ -87,7 +87,7 @@ export function createAIBot(options: AIBotOptions): AIBot {
   bot.decision.attachExplore(bot.explore);
   bot.decision.attachHuman(bot.human);
 
-  bot.scripts = createScriptRunner(bot);
+  bot.scripts = bot.scripts ?? createScriptRunner(bot);
   bot.commands = createCommandRouter(bot, {
     prefix: options.commandPrefix ?? "!",
     allowUsers: options.commandAllowUsers,

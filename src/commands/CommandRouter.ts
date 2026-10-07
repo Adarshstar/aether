@@ -164,13 +164,58 @@ export class CommandRouter {
       ctx.reply("Guard mode.");
     });
 
+    this.register("work", async (args, ctx) => {
+      if (!this.scripts) return ctx.reply("Scripts not loaded");
+      if (!args.length) {
+        const open = this.scripts.listOpenWork();
+        return ctx.reply(open.length ? open.map(w => `${w.id}:${w.status}`).join(" | ") : "No open work");
+      }
+      const job = this.scripts.postWork(args.join(" "));
+      ctx.reply(`Posted ${job.id}`);
+    });
+
+    this.register("resolve", async (args, ctx) => {
+      if (!this.scripts || !args[0]) return ctx.reply("Usage: !resolve work_id [script...]");
+      const job = await this.scripts.resolveWork(args[0], { script: args.slice(1).join(" ") });
+      ctx.reply(`${job.id} ${job.status}${job.error ? " " + job.error : ""}`);
+    });
+
+    this.register("custom", async (args, ctx) => {
+      if (!this.scripts || !args[0]) {
+        return ctx.reply(this.scripts ? `Customs: ${this.scripts.listCustoms().join(", ")}` : "No scripts");
+      }
+      const name = args[0];
+      let data: any = { args: args.slice(1) };
+      const joined = args.slice(1).join(" ");
+      if (joined.startsWith("{")) {
+        try { data = JSON.parse(joined); } catch { /* */ }
+      }
+      const result = await this.scripts.execCustom(name, data);
+      ctx.reply(`custom ${name} ok ${result != null ? JSON.stringify(result).slice(0, 80) : ""}`);
+    });
+
+    this.register("eval", async (args, ctx) => {
+      if (!this.scripts) return ctx.reply("Scripts not loaded");
+      const body = args.join(" ");
+      const lines = body.split("|").map(s => s.trim()).filter(Boolean);
+      await this.scripts.evalLines(lines, ctx);
+      ctx.reply("eval done");
+    });
+
+    this.register("macro", async (args, ctx) => {
+      if (!this.scripts) return ctx.reply("Scripts not loaded");
+      if (!args[0]) return ctx.reply(`Macros: ${this.scripts.listMacros().join(", ") || "(none)"}`);
+      await this.scripts.playMacro(args[0]);
+      ctx.reply(`macro ${args[0]} done`);
+    });
+
     this.register("script", async (args, ctx) => {
       const name = args[0];
       if (!name || !this.scripts) {
-        ctx.reply(this.scripts ? "Usage: !script <name>" : "Scripts not loaded");
+        ctx.reply(this.scripts ? `Scripts: ${this.scripts.list().join(", ")}` : "Scripts not loaded");
         return;
       }
-      await this.scripts.run(name, ctx);
+      await this.scripts.run(name, ctx, args.slice(1));
       ctx.reply(`Script ${name} done`);
     });
 

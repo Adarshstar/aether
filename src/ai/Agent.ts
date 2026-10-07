@@ -242,9 +242,23 @@ export class Agent {
         case "remember":
           this.remember(action.key, action.value);
           break;
-        case "custom":
-          console.log(`[Agent] custom:${action.name}`, action.data ?? "");
+        case "custom": {
+          const name = action.name;
+          const data = action.data ?? {};
+          const scripts = (this.bot as any).scripts;
+          if (scripts && typeof scripts.execCustom === "function") {
+            if (scripts.hasCustom(name)) {
+              await scripts.execCustom(name, data);
+            } else {
+              // Unknown custom → post as open/undefined work
+              scripts.postWork(`custom:${name}`, data?.resolver);
+              console.log(`[Agent] posted undefined work for custom:${name}`);
+            }
+          } else {
+            console.log(`[Agent] custom:${name}`, data);
+          }
           break;
+        }
       }
     } catch (err: any) {
       this.recordFailure(`${action.type}: ${err?.message ?? err}`);

@@ -1,3 +1,13 @@
+## [1.8.0-alpha] — 2026-10-07
+
+### Custom & undefined work
+- ScriptRunner: define/exec custom handlers, macros, variables
+- Mini-language evalLines (chat/goto/dig/custom/work/…)
+- Open work board: postWork / resolveWork / cancel
+- Builtins: mine_area, pipeline, collect, undefined
+- Commands: !work !resolve !custom !eval !macro
+- Agent `custom` actions route to scripts (or open work)
+
 ## [1.7.1-alpha] — 2026-10-07
 
 ### Fast join

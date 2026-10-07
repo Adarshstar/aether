@@ -1,29 +1,55 @@
-# Aether 1.7.1-alpha — Fast joinable Bedrock AI engine
+# Aether 1.8.0-alpha — Custom & undefined work
 
-**BDS 1.26.52.3** · protocol **2193** · NetherNet
+Bedrock AI bot engine (**BDS 1.26.52.3** / protocol **2193**).
 
-## Join fast
+## Custom work & scripts
 
-```bash
-bun add werift          # once — enables real WebRTC
-bun run join:fast       # MC_HOST / MC_PORT env optional
-# or
-STRICT_WEBRTC=1 bun run validate:join
+```ts
+// Define any custom capability
+bot.scripts.define("cheer", async (bot, data) => {
+  bot.chat(data.msg ?? "yay");
+});
+
+// Mini-language pipeline
+await bot.scripts.evalLines([
+  "chat hello",
+  "wait 500",
+  "goto 10 65 10",
+  "custom cheer {\"msg\":\"done\"}",
+]);
+
+// Undefined work board
+const job = bot.scripts.postWork("something not coded yet");
+await bot.scripts.resolveWork(job.id, { script: "chat handled later" });
+
+// Macros
+bot.scripts.saveMacro("intro", [
+  { op: "chat", args: "hi" },
+  { op: "jump" },
+]);
+await bot.scripts.playMacro("intro");
 ```
 
-### Join speedups (1.7.1)
+### Chat commands
 
-- Auto-detect **werift / wrtc / global RTCPeerConnection**
-- **Parallel** probe + WebRTC load
-- **Early ICE** (send after ≥2 candidates, default timeout **2.2s**)
-- Tighter signaling (**8s**) and retries (**350ms** base)
-- Default STUN servers
+| Command | Meaning |
+|---------|---------|
+| `!script name` | Run named script |
+| `!script do chat hi \| wait 300 \| jump` | Inline pipeline |
+| `!custom mine_area {"r":3}` | Run custom handler |
+| `!eval goto 0 65 0 \| eat` | Eval mini-language |
+| `!work dig a tunnel` | Post open/undefined work |
+| `!resolve work_1 chat ok` | Resolve open work |
+| `!macro intro` | Play saved macro |
 
-Without werift/wrtc, engine falls back to **development loopback** (AI still works; not a live BDS player).
+Agent LLM can emit `{ "type": "custom", "name": "pipeline", "data": { "steps": [...] } }`.
 
-## Also included
+## Join
 
-AI agent · human personalities · spatial entity index · fast pathfinder · ItemStackRequest · Farm · craft/windows · TaskQueue
+```bash
+bun add werift
+bun run join:fast
+```
 
 ## License
 

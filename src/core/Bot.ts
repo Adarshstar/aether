@@ -32,6 +32,7 @@ import { ToolManager } from "../tool/Tool";
 import { StateMachine } from "../statemachine/StateMachine";
 import { RecipeRegistry } from "../recipe/Recipe";
 import { createFarm, type Farm } from "../farm/Farm";
+import { createScriptRunner, type ScriptRunner } from "../script/ScriptRunner";
 import { BiomeRegistry } from "../biome/Biome";
 import { AETHER_VERSION, AETHER_NAME, TARGET_PROTOCOL } from "./version";
 import { SpatialIndex } from "../math/SpatialIndex";
@@ -64,6 +65,7 @@ export class Bot extends EventEmitter {
   entityIndex = new SpatialIndex<{ id: number; x: number; y: number; z: number; ref: any }>(8);
   tasks!: TaskQueue;
   farm!: Farm;
+  scripts!: ScriptRunner;
   readonly blocks = BlockRegistry;
   readonly entityTypes = EntityRegistry;
   readonly recipes = RecipeRegistry;
@@ -150,6 +152,7 @@ export class Bot extends EventEmitter {
     this.stateMachine = new StateMachine();
     this.tasks = createTaskQueue(this);
     this.farm = createFarm(this);
+    this.scripts = createScriptRunner(this);
   }
 
   // ═══════════════════════════════════════════════════════════

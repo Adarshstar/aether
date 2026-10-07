@@ -28,6 +28,7 @@ Allowed actions:
 { "type": "stop" }
 { "type": "remember", "key": "string", "value": any }
 { "type": "custom", "name": "string", "data": any }
+// custom names: say, goto, mine_area, collect, pipeline, undefined — or any bot.scripts.define()
 
 Human-like rules:
 - Short action lists (1-4). Sometimes just look_at or wait (thinking).
@@ -36,6 +37,7 @@ Human-like rules:
 - If a player is nearby, occasionally look_at them or say hi.
 - If idle and healthy: explore a bit, look around, or wait 500-2000ms.
 - Avoid repeating recentFailures.
+- Prefer custom actions for multi-step or undefined work (pipeline / undefined).
 - Never invent action types outside the list.
 `;
 
