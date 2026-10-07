@@ -162,11 +162,15 @@ if (!strict) {
 // ── Summary ──
 console.log("\n══ Summary ══");
 const failed = results.filter((r) => !r.ok);
+const critical = failed.filter((r) => r.step !== "probe"); // probe may fail without BDS
 for (const r of results) {
   console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.step}${r.detail ? "  (" + r.detail + ")" : ""}`);
 }
-if (failed.length) {
-  console.log(`\n${failed.length} failure(s). See docs/LIVE_JOIN.md`);
+if (critical.length) {
+  console.log(`\n${critical.length} critical failure(s). See docs/LIVE_JOIN.md`);
   process.exit(1);
 }
-console.log("\nAll validation steps OK.");
+if (failed.length) {
+  console.log(`\nNon-critical: ${failed.map(f=>f.step).join(", ")} (OK for CI without BDS)`);
+}
+console.log("\nValidation OK (mock path).");

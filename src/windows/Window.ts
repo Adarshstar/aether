@@ -59,6 +59,15 @@ export class Window {
     return -1;
   }
 
+  count(networkId: number): number {
+    let n = 0;
+    for (const s of this.slots) {
+      if (s && (s as any).networkId === networkId) n += (s as any).count ?? 1;
+      else if (s && (s as any).type === networkId) n += (s as any).count ?? 1;
+    }
+    return n;
+  }
+
   findInContainer(pred: (item: Item) => boolean): { slot: number; item: Item } | null {
     for (let i = 0; i < this.inventoryStart; i++) {
       const it = this.slots[i];

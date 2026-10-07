@@ -18,7 +18,7 @@ describe("Aether brand", () => {
   });
 
   test("expanded registry", () => {
-    expect(BlockRegistry.size).toBeGreaterThan(40);
+    expect(BlockRegistry.size()).toBeGreaterThan(40);
     expect(BlockRegistry.getByName("diamond_ore")?.tool).toBe("pickaxe");
   });
 

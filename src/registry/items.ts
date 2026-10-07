@@ -133,6 +133,9 @@ export const ItemRegistry = {
   size() {
     return byId.size;
   },
+  get length() {
+    return byId.size;
+  },
   register(d: ItemDef) {
     add(d);
   },

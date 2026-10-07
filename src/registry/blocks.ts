@@ -217,6 +217,9 @@ export const BlockRegistry = {
   size() {
     return byId.size;
   },
+  get length() {
+    return byId.size;
+  },
   register(def: BlockDef) {
     add(def);
   },

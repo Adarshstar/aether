@@ -1,3 +1,12 @@
+## [1.8.1-alpha] — 2026-10-07
+
+### Architecture + CI
+- Clean layered `index.ts` public API (no duplicate exports)
+- `docs/ARCHITECTURE.md` layer diagram and rules
+- GitHub Actions: test matrix, build, layer checks, mock join validation
+- Window.count, registry test fixes, soft probe failure for CI without BDS
+- **113 tests passing** locally
+
 ## [1.8.0-alpha] — 2026-10-07
 
 ### Custom & undefined work

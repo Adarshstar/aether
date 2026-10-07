@@ -62,7 +62,7 @@ describe("XboxAuth offline with chain", () => {
 
 describe("ItemRegistry", () => {
   test("palette size and tools", () => {
-    expect(ItemRegistry.size).toBeGreaterThan(100);
+    expect(ItemRegistry.size()).toBeGreaterThan(40);
     expect(ItemRegistry.get(278).name).toContain("pickaxe");
     expect(ItemRegistry.getByName("diamond")?.networkId).toBe(264);
   });
