@@ -205,17 +205,20 @@ export class Agent {
           }
           break;
         case "use_item":
-          if (typeof (this.bot as any).activateItem === "function") {
-            (this.bot as any).activateItem();
+          if (typeof this.bot.activateItem === "function") {
+            this.bot.activateItem();
           } else {
-            console.log("[Agent] use_item (stub)");
+            this.recordFailure("use_item: activateItem missing");
           }
           break;
         case "eat":
-          if (this.bot.autoEat && typeof this.bot.autoEat.eat === "function") {
-            await this.bot.autoEat.eat();
+          if (typeof this.bot.eat === "function") {
+            const ok = await this.bot.eat(true);
+            if (!ok) this.recordFailure("eat: no food or no session");
+          } else if (this.bot.autoEat && typeof this.bot.autoEat.eat === "function") {
+            await this.bot.autoEat.eat({ force: true });
           } else {
-            console.log("[Agent] eat (autoEat not ready)");
+            this.recordFailure("eat: not available");
           }
           break;
         case "follow_entity": {

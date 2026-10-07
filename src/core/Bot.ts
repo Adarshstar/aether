@@ -529,6 +529,37 @@ export class Bot extends EventEmitter {
     this.inventory.selectHotbar(Math.min(8, found.slot));
   }
 
+  /**
+   * Activate the currently held item (eat, drink, use tool in air).
+   * Sends InventoryTransaction UseItem (click air) on the live BDS session.
+   */
+  activateItem(releaseAfterMs = 1600): boolean {
+    const held = this.inventory.heldItem;
+    if (!held || held.networkId === 0) {
+      console.warn("[Bot] activateItem: empty hand");
+      return false;
+    }
+    if (!this.session || typeof this.session.useItem !== "function") {
+      console.warn("[Bot] activateItem: no session");
+      return false;
+    }
+    this.session.useItem({
+      hotbarSlot: this.inventory.selectedSlot,
+      itemInHand: {
+        networkId: held.networkId,
+        count: held.count,
+        name: held.name,
+      },
+      releaseAfterMs,
+    });
+    return true;
+  }
+
+  /** Eat food via AutoEat (real UseItem packets). */
+  async eat(force = false): Promise<boolean> {
+    return this.autoEat.eat({ force });
+  }
+
   // ═══════════════════════════════════════════════════════════
   // Pathfinding (core)
   // ═══════════════════════════════════════════════════════════

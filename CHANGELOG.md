@@ -1,26 +1,26 @@
 # Changelog
 
-## [1.4.2-alpha] — 2026-10-07
+## [1.4.3-alpha] — 2026-10-07
 
 ### Added
-- **Auto-reconnect** (`autoReconnect`, `maxReconnectAttempts`, `reconnectBaseMs`) with `reconnecting` / `reconnected` events
-- **PlayerAuthInput edge cases**: swim, glide, fly, ascend, descend control flags
-- **WebRTC helper** (`createWeriftPeerConnectionFactory`, `hasNativeRTC`, `tryNativePeerConnection`)
-- **SubChunk request retry** — pending columns are retried once after 4s if no response
-- NetherNet reliability options fully wired through `BotOptions`
+- **Real UseItem / ReleaseItem packets** for eating and activating held items
+  - `buildUseItemPacket`, `buildReleaseItemPacket`, `UseItemAction`
+  - `BDSSession.useItem()` / `releaseItem()`
+  - `Bot.activateItem()` / `Bot.eat()`
+- **AutoEat** now selects food and sends InventoryTransaction UseItem (click air) + delayed ReleaseItem
+- **docs/LIVE_JOIN.md** — minimal checklist to verify live BDS 1.26.52.3 join
 
 ### Improved
-- `setControlState` forwards live controls into `BDSSession`
-- Richer BotOptions for retries, ICE timeout, health checks
+- AI Agent `eat` / `use_item` actions call the real packet path
+
+## [1.4.2-alpha] — 2026-10-07
+
+- Auto-reconnect, PlayerAuthInput swim/glide/fly, WebRTC helper, SubChunk retries
 
 ## [1.4.1-alpha] — 2026-10-07
 
-### Added
-- NetherNet exponential backoff retries, ICE gather timeout, health monitor
-- Expanded AI planner actions (dig/place/equip/eat/follow_entity/remember)
-- Survival module (auto-eat, low-health retreat)
-- ROADMAP.md
+- NetherNet retries, expanded AI planner, Survival module
 
 ## [1.4.0-alpha] — 2026-10-06
 
-Initial public extraction of Aether engine for BDS 1.26.52.3 / protocol 2193.
+- Initial public extraction for BDS 1.26.52.3 / protocol 2193

@@ -9,7 +9,14 @@ import { PacketId, ProtocolVersion } from "./packets";
 import type { AuthResult } from "../auth/XboxAuth";
 import type { World } from "../world/World";
 import type { Vec3 } from "../types";
-import { encodeInventoryTransaction, buildAttackEntityPacket, InventoryTransactionType } from "./inventory_tx";
+import {
+  encodeInventoryTransaction,
+  buildAttackEntityPacket,
+  buildUseItemPacket,
+  buildReleaseItemPacket,
+  InventoryTransactionType,
+  type ItemStack,
+} from "./inventory_tx";
 import { encodeGamePacket } from "./codec";
 import { applyLevelChunkToWorld, type DecodedLevelChunk } from "../world/levelChunk";
 import {
@@ -448,6 +455,48 @@ export class BDSSession extends EventEmitter {
       actionId: 1,
       runtimeEntityId: this.runtimeEntityId,
     });
+  }
+
+  /**
+   * Activate / consume held item (food, potion, etc.) via InventoryTransaction UseItem (click air).
+   */
+  useItem(opts: {
+    hotbarSlot?: number;
+    itemInHand: ItemStack;
+    releaseAfterMs?: number;
+  }) {
+    const slot = opts.hotbarSlot ?? 0;
+    const pkt = buildUseItemPacket({
+      hotbarSlot: slot,
+      itemInHand: opts.itemInHand,
+      playerPos: this.position,
+    });
+    this.client.sendRaw(encodeGamePacket(pkt.id, { raw: pkt.payload }));
+
+    // Many consumables also need ReleaseItem after hold duration
+    const releaseMs = opts.releaseAfterMs ?? 1600;
+    if (releaseMs > 0) {
+      setTimeout(() => {
+        try {
+          const rel = buildReleaseItemPacket({
+            hotbarSlot: slot,
+            itemInHand: opts.itemInHand,
+            playerPos: this.position,
+          });
+          this.client.sendRaw(encodeGamePacket(rel.id, { raw: rel.payload }));
+        } catch { /* session may be gone */ }
+      }, releaseMs);
+    }
+  }
+
+  /** Immediate release of charged / consuming item */
+  releaseItem(itemInHand: ItemStack, hotbarSlot = 0) {
+    const rel = buildReleaseItemPacket({
+      hotbarSlot,
+      itemInHand,
+      playerPos: this.position,
+    });
+    this.client.sendRaw(encodeGamePacket(rel.id, { raw: rel.payload }));
   }
 
   chat(message: string) {

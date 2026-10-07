@@ -1,44 +1,37 @@
-# Aether 1.4.2-alpha — BDS AI Bot Client Engine
+# Aether 1.4.3-alpha — BDS AI Bot Client Engine
 
 AI bot client engine for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**).
 
-## What's new in 1.4.2-alpha
+## What's new in 1.4.3-alpha
 
-- **Auto-reconnect** — `autoReconnect: true` with exponential backoff
-- **PlayerAuthInput** — swim / glide / fly / ascend / descend flags
-- **WebRTC helper** — easy werift / native RTC injection
-- **SubChunk retries** — pending columns retried if no response
-- Full reliability options on `BotOptions`
+- **Real eating**: `InventoryTransaction` UseItem (click air) + ReleaseItem
+- `bot.eat()` / `bot.activateItem()` / `autoEat.eat()`
+- **[Live join checklist](docs/LIVE_JOIN.md)** for real BDS
 
 ## Quick start
 
 ```ts
-import { createBot, createSurvival } from "aether-bot";
+import { createBot, createSurvival } from "./index";
 
 const bot = createBot({
   host: "127.0.0.1",
   port: 19132,
   username: "Aether",
   offline: true,
-  transport: "nethernet",
   autoReconnect: true,
-  maxReconnectAttempts: 8,
-  maxRetries: 4,
-  iceGatherTimeoutMs: 6000,
-});
-
-bot.on("reconnecting", (attempt, delay) => {
-  console.log(`Reconnect #${attempt} in ${delay}ms`);
 });
 
 await bot.connect();
-bot.on("spawn", () => {
-  bot.chat("Aether 1.4.2 online");
+bot.on("spawn", async () => {
   createSurvival(bot).start();
+  bot.autoEat.enable(14);
+  // await bot.eat(true);  // when food is in inventory on a live session
 });
 ```
 
-### Live BDS + werift (Bun)
+### Live BDS + werift
+
+See **[docs/LIVE_JOIN.md](docs/LIVE_JOIN.md)**.
 
 ```bash
 bun add werift
@@ -46,38 +39,31 @@ bun add werift
 
 ```ts
 import { RTCPeerConnection } from "werift";
-import { createBot, createWeriftPeerConnectionFactory } from "aether-bot";
+import { createBot, createWeriftPeerConnectionFactory } from "./index";
 
 const bot = createBot({
-  host: "your-bds",
+  host: "127.0.0.1",
   port: 19132,
-  username: "Aether",
+  username: "AetherLive",
   offline: true,
   strictWebRTC: true,
   createPeerConnection: createWeriftPeerConnectionFactory(RTCPeerConnection),
-  autoReconnect: true,
 });
+await bot.connect();
 ```
 
-## AI bot
+## AI bot (your API key)
 
 ```bash
 AI_API_KEY=sk-... bun run examples/ai-bot.ts
 ```
 
-Planner supports: chat, move_to, dig, place, equip, eat, follow_entity, attack, remember, …
-
-## Tests
-
-```bash
-bun test
-```
+Planner actions include `eat` and `use_item` (now backed by real packets when a live session exists).
 
 ## Docs
 
-- [ROADMAP.md](ROADMAP.md)
-- [CHANGELOG.md](CHANGELOG.md)
-- [HANDOFF.md](HANDOFF.md)
+- [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md) — join checklist  
+- [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [HANDOFF.md](HANDOFF.md)
 
 ## License
 

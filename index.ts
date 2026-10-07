@@ -109,3 +109,14 @@ export { Survival, createSurvival } from "./src/survival/Survival";
 export type { SurvivalOptions } from "./src/survival/Survival";
 export { createWeriftPeerConnectionFactory, hasNativeRTC, tryNativePeerConnection, WERIFT_SETUP_DOCS } from "./src/transport/webrtcHelper";
 export type { PeerConnectionFactory } from "./src/transport/webrtcHelper";
+
+export {
+  encodeInventoryTransaction,
+  buildAttackEntityPacket,
+  buildUseItemPacket,
+  buildReleaseItemPacket,
+  InventoryTransactionType,
+  UseItemAction,
+} from "./src/protocol/inventory_tx";
+export type { ItemStack, InventoryAction } from "./src/protocol/inventory_tx";
+

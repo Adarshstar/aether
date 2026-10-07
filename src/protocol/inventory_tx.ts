@@ -149,3 +149,53 @@ export function buildAttackEntityPacket(opts: {
   });
   return { id: PacketId.InventoryTransaction, payload };
 }
+
+/** UseItem actionType: 0 = click block, 1 = click air / consume (eat, potion, …) */
+export const UseItemAction = {
+  ClickBlock: 0,
+  ClickAir: 1,
+} as const;
+
+/**
+ * InventoryTransaction UseItem for eating / activating held item in air.
+ * BDS 1.26.52.3 — transaction type UseItem (2), actionType ClickAir (1).
+ */
+export function buildUseItemPacket(opts: {
+  hotbarSlot?: number;
+  itemInHand: ItemStack;
+  playerPos: { x: number; y: number; z: number };
+  actionType?: number;
+}): { id: number; payload: Buffer } {
+  const payload = encodeInventoryTransaction({
+    transactionType: InventoryTransactionType.UseItem,
+    actions: [],
+    actionType: opts.actionType ?? UseItemAction.ClickAir,
+    triggerType: 0,
+    blockPos: { x: 0, y: 0, z: 0 },
+    face: 0xff,
+    hotbarSlot: opts.hotbarSlot ?? 0,
+    itemInHand: opts.itemInHand,
+    playerPos: opts.playerPos,
+    clickPos: opts.playerPos,
+    blockRuntimeId: 0,
+  });
+  return { id: PacketId.InventoryTransaction, payload };
+}
+
+/** ReleaseItem — finish consuming. actionType 0 = release. */
+export function buildReleaseItemPacket(opts: {
+  hotbarSlot?: number;
+  itemInHand: ItemStack;
+  playerPos: { x: number; y: number; z: number };
+  actionType?: number;
+}): { id: number; payload: Buffer } {
+  const payload = encodeInventoryTransaction({
+    transactionType: InventoryTransactionType.ReleaseItem,
+    actions: [],
+    actionType: opts.actionType ?? 0,
+    hotbarSlot: opts.hotbarSlot ?? 0,
+    itemInHand: opts.itemInHand,
+    playerPos: opts.playerPos,
+  });
+  return { id: PacketId.InventoryTransaction, payload };
+}
