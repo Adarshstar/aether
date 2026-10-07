@@ -1,6 +1,6 @@
 {
   "name": "aether-bot",
-  "version": "1.4.3-alpha",
+  "version": "1.5.0-alpha",
   "description": "Aether — AI bot client engine for Minecraft Bedrock (BDS 1.26.52.3, protocol 2193, NetherNet, ChatGPT/OpenAI-compatible API)",
   "module": "index.ts",
   "type": "module",

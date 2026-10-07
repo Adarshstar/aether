@@ -120,3 +120,18 @@ export {
 } from "./src/protocol/inventory_tx";
 export type { ItemStack, InventoryAction } from "./src/protocol/inventory_tx";
 
+
+// ── 1.5.0 architecture modules ──
+export { XboxAuth } from "./src/auth/XboxAuth";
+export type { AuthResult, XboxAuthOptions } from "./src/auth/XboxAuth";
+export { createCommandRouter, CommandRouter } from "./src/commands/CommandRouter";
+export type { CommandHandler, CommandContext, CommandRouterOptions } from "./src/commands/CommandRouter";
+export { createDecisionEngine, DecisionEngine } from "./src/decision/DecisionEngine";
+export type { DecisionMode, DecisionEngineOptions } from "./src/decision/DecisionEngine";
+export { createExplore, ExploreModule } from "./src/explore/Explore";
+export { createScriptRunner, ScriptRunner } from "./src/script/ScriptRunner";
+export type { ScriptFn } from "./src/script/ScriptRunner";
+export { createChatBrain, ChatBrain } from "./src/chat/ChatBrain";
+export type { ChatBrainOptions } from "./src/chat/ChatBrain";
+export { chatToString, parseChatPacket } from "./src/chat/Chat";
+export type { ChatComponent } from "./src/chat/Chat";

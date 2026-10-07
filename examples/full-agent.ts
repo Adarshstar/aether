@@ -1,49 +1,46 @@
 /**
- * Aether — full agent demo
+ * Full agent: AI + commands + explore + decision + survival
+ *
+ *   AI_API_KEY=sk-... bun run examples/full-agent.ts
+ *
+ * In-game chat commands:
+ *   !help !status !goto x y z !explore [r] !follow name !come !guard !eat !stop !ai <task> !script wave
  */
 
-import {
-  createBot, GoalNear, AETHER_NAME, AETHER_VERSION, TARGET_BDS,
-} from "../index";
-import { loggerPlugin } from "../src/plugins/logger";
+import { createAIBot, AETHER_NAME, AETHER_VERSION } from "../index";
 
-console.log(`${AETHER_NAME} v${AETHER_VERSION} — target BDS ${TARGET_BDS}`);
+const key = process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
+if (!key) {
+  console.error("Set AI_API_KEY");
+  process.exit(1);
+}
 
-const bot = createBot({
-  host: "127.0.0.1",
-  port: 19132,
-  username: "AetherAgent",
+console.log(`${AETHER_NAME} ${AETHER_VERSION} — full agent`);
+
+const bot = createAIBot({
+  host: process.env.MC_HOST ?? "127.0.0.1",
+  port: Number(process.env.MC_PORT ?? 19132),
+  username: process.env.MC_USER ?? "AetherAI",
   offline: true,
-  transport: "nethernet",
-  enablePhysics: true,
+  aiApiKey: key,
+  aiBaseUrl: process.env.AI_BASE_URL,
+  aiModel: process.env.AI_MODEL ?? "gpt-4o-mini",
+  autoReconnect: true,
+  enableCommands: true,
+  enableChatBrain: true,
+  enableDecision: true,
 });
 
-bot.loadPlugin(loggerPlugin);
-bot.autoEat.enable(16);
-
-bot.on("login", () => console.log("✓ login"));
-bot.on("spawn", async () => {
-  console.log("✓ spawn", bot.entity?.position);
-  console.log("  dimension:", bot.dimension, "gameMode:", bot.gameMode);
-  console.log("  blocks registered:", bot.blocks.size, "entities:", bot.entityTypes.size);
-
-  // Seed ground for pathfinding demo
-  for (let x = -8; x <= 8; x++)
-    for (let z = -8; z <= 8; z++)
-      bot.world.setBlock(x, 64, z, 1);
-
-  bot.chat("Aether online");
-
-  // Pathfind
-  const path = await bot.goTo(new GoalNear(5, 65, 5, 1.5));
-  console.log("path waypoints:", path.length);
-
-  // Block query
-  const b = bot.blockAt({ x: 0, y: 64, z: 0 });
-  console.log("block under spawn:", b.name, "digMs:", bot.digTime(b.type));
+// Custom script example
+bot.scripts.register("cheer", async (ctx) => {
+  ctx.bot.chat("Let's go!");
+  ctx.bot.setControlState("jump", true);
+  await new Promise((r) => setTimeout(r, 300));
+  ctx.bot.setControlState("jump", false);
 });
 
+bot.on("spawn", () => console.log("✓ spawn — commands active (!help)"));
+bot.on("chat", (u, m) => console.log(`<${u}> ${m}`));
 bot.on("error", console.error);
-bot.on("disconnect", (r) => console.log("disconnect:", r));
 
 await bot.connect();

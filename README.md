@@ -1,69 +1,62 @@
-# Aether 1.4.3-alpha — BDS AI Bot Client Engine
+# Aether 1.5.0-alpha — BDS AI Bot Client Engine
 
-AI bot client engine for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**).
+AI bot client for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**, NetherNet).
 
-## What's new in 1.4.3-alpha
+## Highlights (1.5.0)
 
-- **Real eating**: `InventoryTransaction` UseItem (click air) + ReleaseItem
-- `bot.eat()` / `bot.activateItem()` / `autoEat.eat()`
-- **[Live join checklist](docs/LIVE_JOIN.md)** for real BDS
+- **Full Xbox / Microsoft login** — device code, refresh token, disk cache (`.aether-auth/`)
+- **Decision engine** — modes: idle · explore · follow · goto · guard · ai
+- **Chat commands** — `!goto` `!explore` `!follow` `!come` `!guard` `!eat` `!stop` `!ai` `!script` `!status`
+- **Custom scripts** — register named behaviors
+- **Chat brain** — optional AI replies to players
+- **Explore module** — autonomous wandering
+- Faster pathfinder defaults + real UseItem eating (1.4.3)
 
-## Quick start
-
-```ts
-import { createBot, createSurvival } from "./index";
-
-const bot = createBot({
-  host: "127.0.0.1",
-  port: 19132,
-  username: "Aether",
-  offline: true,
-  autoReconnect: true,
-});
-
-await bot.connect();
-bot.on("spawn", async () => {
-  createSurvival(bot).start();
-  bot.autoEat.enable(14);
-  // await bot.eat(true);  // when food is in inventory on a live session
-});
-```
-
-### Live BDS + werift
-
-See **[docs/LIVE_JOIN.md](docs/LIVE_JOIN.md)**.
+## Quick start (offline + AI)
 
 ```bash
-bun add werift
+AI_API_KEY=sk-... bun run examples/full-agent.ts
+```
+
+## Microsoft / Xbox login
+
+```bash
+bun run examples/microsoft-login.ts
+# First run: open the URL and enter the code
+# Later runs: cached refresh token
 ```
 
 ```ts
-import { RTCPeerConnection } from "werift";
-import { createBot, createWeriftPeerConnectionFactory } from "./index";
-
 const bot = createBot({
-  host: "127.0.0.1",
-  port: 19132,
-  username: "AetherLive",
-  offline: true,
-  strictWebRTC: true,
-  createPeerConnection: createWeriftPeerConnectionFactory(RTCPeerConnection),
+  host: "play.example.com",
+  username: "you@outlook.com",
+  auth: "microsoft",
+  offline: false,
+  persistTokens: true,
 });
-await bot.connect();
 ```
 
-## AI bot (your API key)
+## Commands (in-game chat)
 
-```bash
-AI_API_KEY=sk-... bun run examples/ai-bot.ts
-```
+| Command | Effect |
+|---------|--------|
+| `!help` | List commands |
+| `!status` | HP, food, position |
+| `!goto x y z` | Pathfind |
+| `!explore [radius]` | Wander |
+| `!follow <player>` / `!come` | Follow |
+| `!guard` | Attack nearby hostiles |
+| `!eat` / `!stop` | Eat / stop |
+| `!ai <task>` | Hand control to LLM mode |
+| `!script <name>` | Run custom script |
 
-Planner actions include `eat` and `use_item` (now backed by real packets when a live session exists).
+## Live BDS join
+
+See [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md) (WebRTC / werift required for real sessions).
 
 ## Docs
 
-- [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md) — join checklist  
-- [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [HANDOFF.md](HANDOFF.md)
+- [CHANGELOG.md](CHANGELOG.md) · [ROADMAP.md](ROADMAP.md) · [HANDOFF.md](HANDOFF.md) · [docs/LIVE_JOIN.md](docs/LIVE_JOIN.md)
 
 ## License
 

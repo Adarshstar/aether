@@ -31,6 +31,12 @@ export interface BotOptions {
   requireServerIdentity?: boolean;
   /** Domain bound into the offer identity JWT */
   identityDomain?: string;
+  /** MSA refresh token (Xbox online auth) */
+  refreshToken?: string;
+  /** Persist Xbox tokens under authCacheDir */
+  persistTokens?: boolean;
+  /** Token cache directory (default .aether-auth) */
+  authCacheDir?: string;
 
   // ── NetherNet reliability (passed through to NetherNetTransport) ──
   /** Max retries for probe + signaling (default 3) */

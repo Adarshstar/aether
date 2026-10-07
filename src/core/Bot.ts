@@ -127,7 +127,7 @@ export class Bot extends EventEmitter {
 
     this.world = new World();
     this.pathfinder = new Pathfinder(this.world, {
-      maxNodes: 10000, allowDiagonal: true, jumpHeight: 1, fallHeight: 4,
+      maxNodes: 16000, allowDiagonal: true, jumpHeight: 1, fallHeight: 4, avoidLiquid: true,
     });
     this.pathFollower = new PathFollower(this, { sprint: true, jumpObstacles: true });
     this.agent = new Agent(this);
@@ -155,6 +155,10 @@ export class Bot extends EventEmitter {
       username: this.options.username,
       offline: !wantOnline,
       clientId: this.options.clientId,
+      refreshToken: (this.options as any).refreshToken,
+      persistTokens: (this.options as any).persistTokens ?? true,
+      cacheDir: (this.options as any).authCacheDir,
+      fallbackOffline: true,
     });
     this.authResult = await xbox.authenticate();
     this.username = this.authResult.username;

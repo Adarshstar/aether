@@ -1,26 +1,23 @@
 # Changelog
 
-## [1.4.3-alpha] — 2026-10-07
+## [1.5.0-alpha] — 2026-10-07
 
-### Added
-- **Real UseItem / ReleaseItem packets** for eating and activating held items
-  - `buildUseItemPacket`, `buildReleaseItemPacket`, `UseItemAction`
-  - `BDSSession.useItem()` / `releaseItem()`
-  - `Bot.activateItem()` / `Bot.eat()`
-- **AutoEat** now selects food and sends InventoryTransaction UseItem (click air) + delayed ReleaseItem
-- **docs/LIVE_JOIN.md** — minimal checklist to verify live BDS 1.26.52.3 join
+### Xbox / auth
+- Full device-code + refresh-token Microsoft login
+- Token disk cache (`.aether-auth/`)
+- Clearer XBL/XSTS/MC error messages
+- Dual XSTS attempt (MC services + Xbox Live)
 
-### Improved
-- AI Agent `eat` / `use_item` actions call the real packet path
+### Architecture & AI
+- **DecisionEngine** — high-level modes (explore, follow, goto, guard, ai)
+- **CommandRouter** — in-game `!` commands
+- **ScriptRunner** — custom named scripts
+- **ExploreModule** — autonomous exploration
+- **ChatBrain** — LLM replies to player chat
+- `createAIBot` wires the full stack on spawn
+- Pathfinder `maxNodes` 16k + avoidLiquid
 
-## [1.4.2-alpha] — 2026-10-07
-
-- Auto-reconnect, PlayerAuthInput swim/glide/fly, WebRTC helper, SubChunk retries
-
-## [1.4.1-alpha] — 2026-10-07
-
-- NetherNet retries, expanded AI planner, Survival module
-
-## [1.4.0-alpha] — 2026-10-06
-
-- Initial public extraction for BDS 1.26.52.3 / protocol 2193
+### Prior
+- 1.4.3 UseItem eating + live-join checklist
+- 1.4.2 auto-reconnect, auth-input edge cases, WebRTC helper
+- 1.4.1 NetherNet reliability, Survival, expanded planner
