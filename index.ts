@@ -104,3 +104,6 @@ export {
   parseSdpIdentity, injectSdpIdentity, signIdentityAssertion, applyIdentityToOffer, decodeIdentityJwt,
 } from "./src/protocol/sdp";
 export { createMockPeerConnection, MOCK_OFFER_SDP, MOCK_ANSWER_SDP } from "./src/transport/mockRtc";
+
+export { Survival, createSurvival } from "./src/survival/Survival";
+export type { SurvivalOptions } from "./src/survival/Survival";

@@ -7,7 +7,7 @@ import type { Bot } from "../core/Bot";
 import type { AgentAction, AgentObservation, PlannerFn } from "./Agent";
 import { LLMClient, type LLMClientOptions } from "./LLMClient";
 
-const SYSTEM_PROMPT = `You are the brain of a Minecraft Bedrock bot (Aether engine).
+const SYSTEM_PROMPT = `You are the brain of a Minecraft Bedrock bot (Aether engine, BDS 1.26.52.3).
 You receive a JSON observation of the bot's state and must reply with ONLY a JSON array of actions.
 No markdown, no explanation — pure JSON array.
 
@@ -17,17 +17,26 @@ Allowed actions:
 { "type": "move_to", "goal": { "type": "block", "x": n, "y": n, "z": n } }
 { "type": "look_at", "position": { "x": n, "y": n, "z": n } }
 { "type": "control", "control": "forward"|"back"|"left"|"right"|"jump"|"sneak"|"sprint", "state": true|false }
-{ "type": "attack" }
+{ "type": "attack", "targetId": number? }
+{ "type": "dig", "x": n, "y": n, "z": n }
+{ "type": "place", "x": n, "y": n, "z": n, "face": n? }
+{ "type": "equip", "itemName": "string" }
+{ "type": "use_item" }
+{ "type": "eat" }
+{ "type": "follow_entity", "entityId": n, "range": n? }
 { "type": "wait", "ms": number }
 { "type": "stop" }
+{ "type": "remember", "key": "string", "value": any }
 { "type": "custom", "name": "string", "data": any }
 
 Rules:
 - Prefer short action lists (1-4 actions).
-- If idle and healthy, explore or chat briefly.
-- If low health, avoid combat and retreat.
-- Coordinates are in the observation.position field.
-- Never invent packet types outside the list above.
+- If health < 10 or food < 6, prioritise eat / retreat.
+- Use inventorySummary to decide what to equip or eat.
+- If recentFailures is non-empty, avoid repeating the same failing action.
+- If idle and healthy, explore nearby or chat briefly.
+- Coordinates come from observation.position.
+- Never invent action types outside the list above.
 `;
 
 export interface LLMPlannerOptions extends LLMClientOptions {
@@ -61,18 +70,22 @@ export function createLLMPlanner(opts: LLMPlannerOptions): PlannerFn {
       position: observation.position,
       health: observation.health,
       food: observation.food,
+      oxygen: observation.oxygen,
       dimension: observation.dimension,
       time: observation.time,
       raining: observation.raining,
       entityCount: observation.entityCount,
       playerCount: observation.playerCount,
+      loadedChunks: observation.loadedChunks,
       nearestPlayer: observation.nearestPlayer
-        ? { type: observation.nearestPlayer.type, position: observation.nearestPlayer.position }
+        ? { id: (observation.nearestPlayer as any).id, type: observation.nearestPlayer.type, position: observation.nearestPlayer.position }
         : null,
       nearestEntity: observation.nearestEntity
-        ? { type: observation.nearestEntity.type, position: observation.nearestEntity.position }
+        ? { id: (observation.nearestEntity as any).id, type: observation.nearestEntity.type, position: observation.nearestEntity.position }
         : null,
       heldItem: observation.heldItem,
+      inventorySummary: observation.inventorySummary ?? [],
+      recentFailures: observation.recentFailures ?? [],
     });
 
     const userContent = `Observation:\n${obsJson}\n\nReply with a JSON action array only.`;

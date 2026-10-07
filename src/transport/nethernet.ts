@@ -41,6 +41,14 @@ export interface NetherNetOptions {
   identityDomain?: string;
   /** Refuse SDP answers that do not carry a=identity. */
   requireServerIdentity?: boolean;
+  /** Max retries for probe + signaling (default 3). */
+  maxRetries?: number;
+  /** Base delay in ms between retries (exponential backoff, default 800). */
+  retryBaseMs?: number;
+  /** How long to wait for ICE gathering before sending offer (default 5000). */
+  iceGatherTimeoutMs?: number;
+  /** Enable continuous connection health monitoring. */
+  healthCheckIntervalMs?: number;
 }
 
 export interface JoinInfo {
@@ -101,6 +109,10 @@ export class NetherNetTransport extends Transport {
     identityToken?: string;
     identityDomain: string;
     requireServerIdentity: boolean;
+    maxRetries: number;
+    retryBaseMs: number;
+    iceGatherTimeoutMs: number;
+    healthCheckIntervalMs: number;
   };
   private connected = false;
   private closing = false;
@@ -113,6 +125,8 @@ export class NetherNetTransport extends Transport {
   private joinInfo: JoinInfo | null = null;
   private loopback = false;
   private iceCandidates: any[] = [];
+  private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectAttempts = 0;
 
   constructor(options: NetherNetOptions) {
     super();
@@ -129,13 +143,41 @@ export class NetherNetTransport extends Transport {
       iceServers: options.iceServers ?? [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
       ],
       identityAssertion: options.identityAssertion,
       identityPrivateKeyPem: options.identityPrivateKeyPem,
       identityToken: options.identityToken,
       identityDomain: options.identityDomain ?? "",
       requireServerIdentity: options.requireServerIdentity ?? false,
+      maxRetries: options.maxRetries ?? 3,
+      retryBaseMs: options.retryBaseMs ?? 800,
+      iceGatherTimeoutMs: options.iceGatherTimeoutMs ?? 5000,
+      healthCheckIntervalMs: options.healthCheckIntervalMs ?? 0,
     };
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  private async withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    let lastErr: any;
+    for (let attempt = 0; attempt <= this.options.maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          const delay = this.options.retryBaseMs * Math.pow(2, attempt - 1);
+          console.log(`[NetherNet] ${label} retry ${attempt}/${this.options.maxRetries} after ${delay}ms`);
+          await this.sleep(delay);
+        }
+        return await fn();
+      } catch (e: any) {
+        lastErr = e;
+        console.warn(`[NetherNet] ${label} attempt ${attempt + 1} failed: ${e?.message ?? e}`);
+        if (this.closing) throw e;
+      }
+    }
+    throw lastErr ?? new Error(`${label} failed after retries`);
   }
 
   private baseUrl(): string {
@@ -145,40 +187,42 @@ export class NetherNetTransport extends Transport {
   }
 
   async probe(): Promise<JoinInfo> {
-    const url = `${this.baseUrl()}/v1/join`;
-    console.log(`[NetherNet] GET ${url}`);
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(this.options.signalingTimeoutMs),
+    return this.withRetry("probe", async () => {
+      const url = `${this.baseUrl()}/v1/join`;
+      console.log(`[NetherNet] GET ${url}`);
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json", "User-Agent": "Aether/1.4.1" },
+        signal: AbortSignal.timeout(this.options.signalingTimeoutMs),
+      });
+      if (!res.ok) throw new Error(`NetherNet probe failed: HTTP ${res.status}`);
+      let raw: any = null;
+      const ct = res.headers.get("content-type") ?? "";
+      const text = await res.text();
+      if (ct.includes("json") || text.trim().startsWith("{")) {
+        try { raw = JSON.parse(text); } catch { raw = { text }; }
+      } else {
+        raw = { text };
+      }
+      const networkId = pick<string | number>(raw, [
+        "networkId", "NetworkId", "id", "webrtcNetworkId", "WebRTCNetworkId", "network_id",
+      ], this.options.networkId);
+      this.joinInfo = {
+        raw,
+        networkId: String(networkId ?? this.options.networkId),
+        motd: pick<string>(raw, ["motd", "MOTD", "levelname", "level", "name"]),
+        name: pick<string>(raw, ["name", "serverName", "motd"]),
+        protocol: Number(pick(raw, ["protocol", "Protocol", "protocolVersion"]) ?? 0) || undefined,
+        version: pick<string>(raw, ["version", "Version", "mcVersion"]),
+        level: pick<string>(raw, ["level", "levelname", "LevelName"]),
+        players: Number(pick(raw, ["players", "numPlayers", "online"]) ?? NaN) || undefined,
+        maxPlayers: Number(pick(raw, ["maxPlayers", "maxplayers", "max"]) ?? NaN) || undefined,
+        gameType: pick<number>(raw, ["gameType", "gametype", "gamemode"]),
+      };
+      if (this.joinInfo.networkId) this.options.networkId = this.joinInfo.networkId;
+      console.log(`[NetherNet] Probe OK networkId=${this.options.networkId} protocol=${this.joinInfo.protocol ?? "?"}`);
+      return this.joinInfo;
     });
-    if (!res.ok) throw new Error(`NetherNet probe failed: HTTP ${res.status}`);
-    let raw: any = null;
-    const ct = res.headers.get("content-type") ?? "";
-    const text = await res.text();
-    if (ct.includes("json") || text.trim().startsWith("{")) {
-      try { raw = JSON.parse(text); } catch { raw = { text }; }
-    } else {
-      raw = { text };
-    }
-    const networkId = pick<string | number>(raw, [
-      "networkId", "NetworkId", "id", "webrtcNetworkId", "WebRTCNetworkId", "network_id",
-    ], this.options.networkId);
-    this.joinInfo = {
-      raw,
-      networkId: String(networkId ?? this.options.networkId),
-      motd: pick<string>(raw, ["motd", "MOTD", "levelname", "level", "name"]),
-      name: pick<string>(raw, ["name", "serverName", "motd"]),
-      protocol: Number(pick(raw, ["protocol", "Protocol", "protocolVersion"]) ?? 0) || undefined,
-      version: pick<string>(raw, ["version", "Version", "mcVersion"]),
-      level: pick<string>(raw, ["level", "levelname", "LevelName"]),
-      players: Number(pick(raw, ["players", "numPlayers", "online"]) ?? NaN) || undefined,
-      maxPlayers: Number(pick(raw, ["maxPlayers", "maxplayers", "max"]) ?? NaN) || undefined,
-      gameType: pick<number>(raw, ["gameType", "gametype", "gamemode"]),
-    };
-    if (this.joinInfo.networkId) this.options.networkId = this.joinInfo.networkId;
-    console.log(`[NetherNet] Probe OK networkId=${this.options.networkId} protocol=${this.joinInfo.protocol ?? "?"}`);
-    return this.joinInfo;
   }
 
   private createPC(): any {
@@ -326,12 +370,25 @@ export class NetherNetTransport extends Transport {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
+    // Collect ICE candidates more aggressively
+    if (typeof pc.onicecandidate === "function" || "onicecandidate" in pc) {
+      pc.onicecandidate = (ev: any) => {
+        if (ev?.candidate) {
+          this.iceCandidates.push(ev.candidate);
+        }
+      };
+    }
+
     if (pc.iceGatheringState !== "complete") {
       await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, 4000);
+        const t = setTimeout(() => {
+          console.log(`[NetherNet] ICE gather timeout after ${this.options.iceGatherTimeoutMs}ms (${this.iceCandidates.length} candidates)`);
+          resolve();
+        }, this.options.iceGatherTimeoutMs);
         pc.onicegatheringstatechange = () => {
           if (pc.iceGatheringState === "complete") {
             clearTimeout(t);
+            console.log(`[NetherNet] ICE gathering complete (${this.iceCandidates.length} candidates)`);
             resolve();
           }
         };
@@ -355,7 +412,7 @@ export class NetherNetTransport extends Transport {
     }
 
     const joinUrl = `${this.baseUrl()}/v1/join/${encodeURIComponent(networkId)}`;
-    console.log(`[NetherNet] POST ${joinUrl}`);
+    console.log(`[NetherNet] POST ${joinUrl} (candidates=${this.iceCandidates.length})`);
 
     const body = {
       sdp,
@@ -366,22 +423,27 @@ export class NetherNetTransport extends Transport {
       ),
     };
 
-    const res = await fetch(joinUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeout),
+    // Retry signaling POST with backoff
+    const answerJson = await this.withRetry("signaling", async () => {
+      const res = await fetch(joinUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": "Aether/1.4.1",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeout),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`Signaling join HTTP ${res.status}: ${errBody.slice(0, 200)}`);
+      }
+
+      return res.json().catch(async () => ({ sdp: await res.text() }));
     });
 
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      throw new Error(`Signaling join HTTP ${res.status}: ${errBody.slice(0, 200)}`);
-    }
-
-    const answerJson = await res.json().catch(async () => ({ sdp: await res.text() }));
     const parsed = extractSdp(answerJson);
     if (!parsed?.sdp) throw new Error("Signaling response missing sdp");
 
@@ -405,6 +467,26 @@ export class NetherNetTransport extends Transport {
     }
 
     await openPromise;
+    this.startHealthMonitor();
+  }
+
+  private startHealthMonitor(): void {
+    if (this.healthTimer) clearInterval(this.healthTimer);
+    const interval = this.options.healthCheckIntervalMs;
+    if (!interval || interval <= 0) return;
+    this.healthTimer = setInterval(() => {
+      if (this.closing || !this.connected) return;
+      const silent = Date.now() - this.lastActivity;
+      if (silent > interval * 3) {
+        console.warn(`[NetherNet] No activity for ${silent}ms — emitting stale`);
+        this.emit("stale", { silentMs: silent });
+      }
+      // Check datachannel state
+      if (this.dc && this.dc.readyState !== "open") {
+        console.warn(`[NetherNet] DataChannel state=${this.dc.readyState}`);
+        this.emit("disconnected", `datachannel ${this.dc.readyState}`);
+      }
+    }, interval);
   }
 
   send(data: Buffer | Uint8Array): void {

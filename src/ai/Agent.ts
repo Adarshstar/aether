@@ -13,8 +13,15 @@ export type AgentAction =
   | { type: "look_at"; position: Vec3 }
   | { type: "control"; control: "forward" | "back" | "left" | "right" | "jump" | "sneak" | "sprint"; state: boolean }
   | { type: "attack"; targetId?: number }
+  | { type: "dig"; x: number; y: number; z: number }
+  | { type: "place"; x: number; y: number; z: number; face?: number }
+  | { type: "equip"; itemName?: string; slot?: number }
+  | { type: "use_item" }
+  | { type: "eat" }
+  | { type: "follow_entity"; entityId: number; range?: number }
   | { type: "wait"; ms: number }
   | { type: "stop" }
+  | { type: "remember"; key: string; value: any }
   | { type: "custom"; name: string; data?: any };
 
 export interface AgentObservation {
@@ -34,6 +41,10 @@ export interface AgentObservation {
   playerCount: number;
   loadedChunks: number;
   heldItem: any;
+  /** Short inventory summary for the planner */
+  inventorySummary?: string[];
+  /** Recent action failures (for planner awareness) */
+  recentFailures?: string[];
   timestamp: number;
 }
 
@@ -95,6 +106,25 @@ export class Agent {
 
   observe(): AgentObservation {
     const e = this.bot.entity;
+    // Build a short inventory summary for the LLM
+    let inventorySummary: string[] = [];
+    try {
+      const inv = this.bot.inventory as any;
+      if (inv?.items && typeof inv.items === "function") {
+        const items = inv.items();
+        inventorySummary = (items ?? []).slice(0, 12).map((it: any) =>
+          `${it.name ?? it.displayName ?? "item"} x${it.count ?? 1}`
+        );
+      } else if (Array.isArray(inv?.slots)) {
+        inventorySummary = inv.slots
+          .filter((s: any) => s)
+          .slice(0, 12)
+          .map((s: any) => `${s.name ?? "item"} x${s.count ?? 1}`);
+      }
+    } catch { /* ignore */ }
+
+    const recentFailures: string[] = this.recall<string[]>("recentFailures") ?? [];
+
     return {
       position: e?.position ?? null,
       velocity: e?.velocity ?? null,
@@ -112,46 +142,110 @@ export class Agent {
       playerCount: this.bot.players.size,
       loadedChunks: this.bot.world.loadedColumns,
       heldItem: this.bot.inventory.heldItem,
+      inventorySummary,
+      recentFailures: recentFailures.slice(-5),
       timestamp: Date.now(),
     };
   }
 
   get lastObs() { return this.lastObservation; }
 
+  private recordFailure(msg: string) {
+    const list = this.recall<string[]>("recentFailures") ?? [];
+    list.push(`${new Date().toISOString().slice(11, 19)} ${msg}`);
+    if (list.length > 10) list.shift();
+    this.remember("recentFailures", list);
+  }
+
   private async execute(action: AgentAction): Promise<void> {
-    switch (action.type) {
-      case "chat":
-        this.bot.chat(action.message);
-        break;
-      case "move_to":
-        if (this.pathfinder && this.bot.entity) {
-          const path = this.pathfinder.findPath(this.bot.entity.position, action.goal);
-          console.log(`[Agent] Path length ${path.length}`);
-          if (path.length) this.bot.pathFollower.follow(path);
+    try {
+      switch (action.type) {
+        case "chat":
+          this.bot.chat(action.message);
+          break;
+        case "move_to":
+          if (this.pathfinder && this.bot.entity) {
+            const path = this.pathfinder.findPath(this.bot.entity.position, action.goal);
+            console.log(`[Agent] Path length ${path.length}`);
+            if (path.length) this.bot.pathFollower.follow(path);
+            else this.recordFailure(`no path to goal ${JSON.stringify(action.goal)}`);
+          }
+          break;
+        case "follow_path":
+          this.bot.pathFollower.follow(action.path);
+          break;
+        case "look_at":
+          this.bot.lookAt(action.position);
+          break;
+        case "control":
+          this.bot.setControlState(action.control, action.state);
+          break;
+        case "attack":
+          this.bot.combat.attack();
+          break;
+        case "dig":
+          if (typeof (this.bot as any).dig === "function") {
+            await (this.bot as any).dig({ x: action.x, y: action.y, z: action.z });
+          } else {
+            console.log(`[Agent] dig ${action.x},${action.y},${action.z} (stub)`);
+          }
+          break;
+        case "place":
+          if (typeof (this.bot as any).placeBlock === "function") {
+            await (this.bot as any).placeBlock({ x: action.x, y: action.y, z: action.z }, action.face ?? 1);
+          } else {
+            console.log(`[Agent] place ${action.x},${action.y},${action.z} (stub)`);
+          }
+          break;
+        case "equip":
+          if (typeof (this.bot as any).equip === "function") {
+            await (this.bot as any).equip(action.itemName ?? action.slot);
+          } else {
+            console.log(`[Agent] equip ${action.itemName ?? action.slot} (stub)`);
+          }
+          break;
+        case "use_item":
+          if (typeof (this.bot as any).activateItem === "function") {
+            (this.bot as any).activateItem();
+          } else {
+            console.log("[Agent] use_item (stub)");
+          }
+          break;
+        case "eat":
+          if (this.bot.autoEat && typeof this.bot.autoEat.eat === "function") {
+            await this.bot.autoEat.eat();
+          } else {
+            console.log("[Agent] eat (autoEat not ready)");
+          }
+          break;
+        case "follow_entity": {
+          const ent = this.bot.entities.get(action.entityId);
+          if (ent && this.pathfinder && this.bot.entity) {
+            const goal = { type: "near" as const, x: ent.position.x, y: ent.position.y, z: ent.position.z, range: action.range ?? 2 };
+            const path = this.pathfinder.findPath(this.bot.entity.position, goal);
+            if (path.length) this.bot.pathFollower.follow(path);
+          } else {
+            this.recordFailure(`follow_entity ${action.entityId} not found`);
+          }
+          break;
         }
-        break;
-      case "follow_path":
-        this.bot.pathFollower.follow(action.path);
-        break;
-      case "look_at":
-        this.bot.lookAt(action.position);
-        break;
-      case "control":
-        this.bot.setControlState(action.control, action.state);
-        break;
-      case "attack":
-        this.bot.combat.attack();
-        break;
-      case "wait":
-        await this.sleep(action.ms);
-        break;
-      case "stop":
-        this.clearQueue();
-        this.bot.pathFollower.stop();
-        break;
-      case "custom":
-        console.log(`[Agent] custom:${action.name}`, action.data ?? "");
-        break;
+        case "wait":
+          await this.sleep(action.ms);
+          break;
+        case "stop":
+          this.clearQueue();
+          this.bot.pathFollower.stop();
+          break;
+        case "remember":
+          this.remember(action.key, action.value);
+          break;
+        case "custom":
+          console.log(`[Agent] custom:${action.name}`, action.data ?? "");
+          break;
+      }
+    } catch (err: any) {
+      this.recordFailure(`${action.type}: ${err?.message ?? err}`);
+      console.error(`[Agent] execute ${action.type} failed:`, err);
     }
   }
 
