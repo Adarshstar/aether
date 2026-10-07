@@ -19,6 +19,7 @@ import {
   NETHERNET_UNRELIABLE_CHANNEL,
 } from "../protocol/framing";
 import { applyIdentityToOffer, injectSdpIdentity, parseSdpIdentity } from "../protocol/sdp";
+import { resolvePeerConnectionFactory } from "./webrtcLoader";
 
 export interface NetherNetOptions {
   host: string;
@@ -135,7 +136,7 @@ export class NetherNetTransport extends Transport {
       port: options.port,
       networkId: options.networkId ?? "0",
       offline: options.offline ?? true,
-      signalingTimeoutMs: options.signalingTimeoutMs ?? 15000,
+      signalingTimeoutMs: options.signalingTimeoutMs ?? 8000,
       createPeerConnection: options.createPeerConnection,
       signalingUrl: options.signalingUrl,
       secureSignaling: options.secureSignaling ?? false,
@@ -150,9 +151,9 @@ export class NetherNetTransport extends Transport {
       identityToken: options.identityToken,
       identityDomain: options.identityDomain ?? "",
       requireServerIdentity: options.requireServerIdentity ?? false,
-      maxRetries: options.maxRetries ?? 3,
-      retryBaseMs: options.retryBaseMs ?? 800,
-      iceGatherTimeoutMs: options.iceGatherTimeoutMs ?? 5000,
+      maxRetries: options.maxRetries ?? 4,
+      retryBaseMs: options.retryBaseMs ?? 350,
+      iceGatherTimeoutMs: options.iceGatherTimeoutMs ?? 2200,
       healthCheckIntervalMs: options.healthCheckIntervalMs ?? 0,
     };
   }
@@ -192,7 +193,7 @@ export class NetherNetTransport extends Transport {
       console.log(`[NetherNet] GET ${url}`);
       const res = await fetch(url, {
         method: "GET",
-        headers: { Accept: "application/json", "User-Agent": "Aether/1.4.1" },
+        headers: { Accept: "application/json", "User-Agent": "Aether/1.7.1" },
         signal: AbortSignal.timeout(this.options.signalingTimeoutMs),
       });
       if (!res.ok) throw new Error(`NetherNet probe failed: HTTP ${res.status}`);
@@ -240,14 +241,20 @@ export class NetherNetTransport extends Transport {
     if (this.connected) return;
     this.closing = false;
     this.loopback = false;
+    const t0 = Date.now();
 
     try {
-      try {
-        await this.probe();
-      } catch (e: any) {
+      // Parallel: probe + resolve WebRTC implementation
+      const probeP = this.probe().catch((e: any) => {
         console.warn(`[NetherNet] Probe warning: ${e.message} — continuing with networkId=${this.options.networkId}`);
         if (this.options.strictWebRTC) throw e;
+        return null;
+      });
+      if (!this.options.createPeerConnection) {
+        const factory = await resolvePeerConnectionFactory(this.options.iceServers as any);
+        if (factory) this.options.createPeerConnection = factory;
       }
+      await probeP;
 
       const pc = this.createPC();
       if (!pc) {
@@ -282,7 +289,7 @@ export class NetherNetTransport extends Transport {
       this.lastActivity = Date.now();
       this.emit("connected");
       this.emit("loopback", false);
-      console.log("[NetherNet] WebRTC data channel OPEN — live path");
+      console.log(`[NetherNet] WebRTC data channel OPEN — live path (${Date.now() - t0}ms)`);
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       console.error("[NetherNet] Connect failed:", msg);
@@ -379,17 +386,30 @@ export class NetherNetTransport extends Transport {
       };
     }
 
+    // Fast ICE: complete, ≥2 candidates, or timeout
     if (pc.iceGatheringState !== "complete") {
       await new Promise<void>((resolve) => {
-        const t = setTimeout(() => {
-          console.log(`[NetherNet] ICE gather timeout after ${this.options.iceGatherTimeoutMs}ms (${this.iceCandidates.length} candidates)`);
+        let done = false;
+        const iceStart = Date.now();
+        const finish = (why: string) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          console.log(`[NetherNet] ICE ${why} (${this.iceCandidates.length} candidates, ${Date.now() - iceStart}ms)`);
           resolve();
-        }, this.options.iceGatherTimeoutMs);
+        };
+        const timer = setTimeout(() => finish("timeout"), this.options.iceGatherTimeoutMs);
+        const prev = pc.onicegatheringstatechange;
         pc.onicegatheringstatechange = () => {
-          if (pc.iceGatheringState === "complete") {
-            clearTimeout(t);
-            console.log(`[NetherNet] ICE gathering complete (${this.iceCandidates.length} candidates)`);
-            resolve();
+          if (typeof prev === "function") prev();
+          if (pc.iceGatheringState === "complete") finish("complete");
+        };
+        const prevCand = pc.onicecandidate;
+        pc.onicecandidate = (ev: any) => {
+          if (typeof prevCand === "function") prevCand(ev);
+          if (ev?.candidate) {
+            this.iceCandidates.push(ev.candidate);
+            if (this.iceCandidates.length >= 2) finish("early");
           }
         };
       });
@@ -430,7 +450,7 @@ export class NetherNetTransport extends Transport {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          "User-Agent": "Aether/1.4.1",
+          "User-Agent": "Aether/1.7.1",
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(timeout),

@@ -1,6 +1,6 @@
 {
   "name": "aether-bot",
-  "version": "1.7.0-alpha",
+  "version": "1.7.1-alpha",
   "description": "Aether \u2014 AI bot client engine for Minecraft Bedrock (BDS 1.26.52.3, protocol 2193, NetherNet, ChatGPT/OpenAI-compatible API)",
   "module": "index.ts",
   "type": "module",
@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "handoff": "echo See HANDOFF.md and HANDOFF_PROMPT.txt",
     "validate:join": "bun run examples/live-join-validate.ts",
-    "bench:path": "bun test tests/pathfinder-bench.test.ts"
+    "bench:path": "bun test tests/pathfinder-bench.test.ts",
+    "join:fast": "bun run examples/join-fast.ts"
   },
   "keywords": [
     "aether",

@@ -1,3 +1,12 @@
+## [1.7.1-alpha] — 2026-10-07
+
+### Fast join
+- Auto WebRTC loader (werift/wrtc/global)
+- Parallel probe + WebRTC resolve
+- Early ICE exit (≥2 candidates)
+- Faster defaults: ICE 2.2s, signaling 8s, retry 350ms
+- `examples/join-fast.ts` / `bun run join:fast`
+
 ## [1.7.0-alpha] — 2026-10-07
 
 ### Gap fill

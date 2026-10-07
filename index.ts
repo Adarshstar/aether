@@ -153,3 +153,5 @@ export type { StackRequestSlotInfo } from "./src/protocol/itemStackRequest";
 export { applyStartGameData, applyBlockPalette, applyItemPalette } from "./src/registry/applyStartGame";
 export type { PaletteEntry } from "./src/registry/applyStartGame";
 export { createFarm, Farm } from "./src/farm/Farm";
+
+export { resolvePeerConnectionFactory, getCachedPeerFactory, resetWebRtcLoader } from "./src/transport/webrtcLoader";

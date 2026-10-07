@@ -1,5 +1,5 @@
 /** Aether engine version metadata */
-export const AETHER_VERSION = "1.7.0-alpha";
+export const AETHER_VERSION = "1.7.1-alpha";
 export const AETHER_NAME = "Aether";
 export const TARGET_BDS = "1.26.52.3";
 export const TARGET_PROTOCOL = 2193 as const;

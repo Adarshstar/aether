@@ -15,6 +15,7 @@
 import {
   NetherNetTransport,
   createMockPeerConnection,
+  resolvePeerConnectionFactory,
   AETHER_VERSION,
   AETHER_NAME,
   TARGET_PROTOCOL,
@@ -128,17 +129,11 @@ if (!strict) {
 } else {
   try {
     let factory: (() => any) | undefined;
-    try {
-      const werift = await import("werift");
-      const RTCPeerConnection = (werift as any).RTCPeerConnection;
-      factory = () =>
-        new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-        });
-      pass("werift_load", "RTCPeerConnection available");
-    } catch {
-      fail("werift_load", "bun add werift");
-      throw new Error("werift missing");
+    factory = await resolvePeerConnectionFactory() ?? undefined;
+    if (factory) pass("webrtc_load", "factory available");
+    else {
+      fail("webrtc_load", "bun add werift");
+      throw new Error("no WebRTC");
     }
 
     const t = new NetherNetTransport({
