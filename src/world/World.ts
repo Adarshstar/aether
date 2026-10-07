@@ -71,11 +71,20 @@ export class World {
     const oz = Math.floor(origin.z);
     const max = Math.floor(maxDistance);
 
-    for (let r = 0; r <= max; r++) {
+    // r=0 center first
+    {
+      const id = this.getBlock(ox, oy, oz);
+      if (matching(id)) return { x: ox, y: oy, z: oz };
+    }
+
+    // Expanding hollow shells — nearest-first (faster than full volume scan)
+    for (let r = 1; r <= max; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) {
-          // only the shell of the cube
-          if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
+          if (Math.abs(dx) !== r && Math.abs(dz) !== r && r > 0) {
+            // vertical pillars only on outer XZ ring
+            continue;
+          }
           for (let dy = -r; dy <= r; dy++) {
             const x = ox + dx, y = oy + dy, z = oz + dz;
             const id = this.getBlock(x, y, z);

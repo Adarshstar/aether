@@ -1,3 +1,12 @@
+## [1.6.0-alpha] — 2026-10-07
+
+### Performance & advanced systems
+- SpatialIndex for entity neighborhood / nearest queries
+- Pathfinder: packed keys, node pool, path cache, 20k max nodes
+- PerfMonitor + globalPerf instrumentation
+- TaskQueue multi-step priority tasks
+- World findBlock nearest-shell refinement
+
 
 ## [1.5.1-alpha] — 2026-10-07
 

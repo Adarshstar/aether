@@ -1,41 +1,53 @@
-# Aether 1.5.1-alpha — Human-like BDS AI Bot Engine
+# Aether 1.6.0-alpha — Advanced Bedrock AI Bot Engine
 
-AI bot client for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**).
+High-performance AI bot engine for **Minecraft Bedrock Dedicated Server 1.26.52.3** (protocol **2193**, NetherNet).
 
-## Human-like behavior (1.5.1)
+## Beyond Mineflayer (different edition — advanced where it matters)
 
-Bots are no longer pure automata:
+Mineflayer is the gold standard for **Java**. Aether targets **Bedrock** and ships systems Mineflayer does not include first-class:
 
-- **Personalities** — explorer, guard, social, coward, berserker, afk_buddy
-- **Human movement** — path pauses, variable sprint, look-ahead, aim noise
-- **Fidget & attention** — look around, glance at players, idle jump/sneak
-- **Hesitation** — reaction delays, freeze when hurt
-- **Autonomous mode** — personality picks explore / socialize / fight
-- **LLM prompt** tuned for casual player-like chat and imperfect plans
+| Area | Aether 1.6 |
+|------|------------|
+| Edition | Bedrock / NetherNet / Xbox |
+| AI | LLM planner + decision + chat brain |
+| Human-like | Personalities, fidget, hesitation, autonomous |
+| Pathfinding | Packed-key A*, node pool, path cache, 20k nodes |
+| Entity queries | **Spatial hash grid** (not full linear scan) |
+| Tasks | Priority multi-step **TaskQueue** |
+| Perf | **PerfMonitor** (path ms, cache hits, query counts) |
+| Commands | `!` router + scripts |
+
+## Performance (1.6.0)
+
+- Spatial index for nearest-entity
+- Pathfinder: numeric keys, object pool, short-lived path cache
+- Humanized movement still on
+- Task queue for chained dig/goto/collect
 
 ```ts
+import { createAIBot, globalPerf } from "./index";
+
 const bot = createAIBot({
   host: "127.0.0.1",
   username: "Aether",
   offline: true,
   aiApiKey: process.env.AI_API_KEY!,
-  personality: "explorer", // or "social" | "guard" | ...
+  personality: "explorer",
   autonomous: true,
+});
+
+bot.on("spawn", () => {
+  bot.tasks.push(
+    { type: "goto", goal: { x: 100, y: 70, z: 100 }, priority: 1 },
+    { type: "chat", message: "made it" },
+  );
+  console.log(globalPerf.snapshot());
 });
 ```
 
-## Also included (1.5.0+)
+## Honest note
 
-Xbox login + token cache · decision modes · `!` commands · scripts · explore · chat brain · real UseItem eating
-
-```bash
-AI_API_KEY=sk-... bun run examples/full-agent.ts
-bun run examples/microsoft-login.ts
-```
-
-## Docs
-
-[CHANGELOG](CHANGELOG.md) · [ROADMAP](ROADMAP.md) · [LIVE_JOIN](docs/LIVE_JOIN.md) · [HANDOFF](HANDOFF.md)
+Live BDS join still needs WebRTC (`docs/LIVE_JOIN.md`). Gameplay depth (craft/chests) is thinner than Mineflayer on Java — Aether leads on **Bedrock + AI + human/autonomy + query/path speed architecture**.
 
 ## License
 

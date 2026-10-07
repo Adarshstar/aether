@@ -141,3 +141,9 @@ export type { HumanBehaviorOptions } from "./src/human/HumanBehavior";
 export { createPersonality, reactionDelayMs, shouldAct } from "./src/human/Personality";
 export type { PersonalityTraits, PersonalityPreset } from "./src/human/Personality";
 
+
+export { SpatialIndex } from "./src/math/SpatialIndex";
+export type { SpatialPoint } from "./src/math/SpatialIndex";
+export { PerfMonitor, globalPerf } from "./src/core/PerfMonitor";
+export { createTaskQueue, TaskQueue } from "./src/tasks/TaskQueue";
+export type { Task } from "./src/tasks/TaskQueue";

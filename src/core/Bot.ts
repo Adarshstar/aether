@@ -33,6 +33,9 @@ import { StateMachine } from "../statemachine/StateMachine";
 import { RecipeRegistry } from "../recipe/Recipe";
 import { BiomeRegistry } from "../biome/Biome";
 import { AETHER_VERSION, AETHER_NAME, TARGET_PROTOCOL } from "./version";
+import { SpatialIndex } from "../math/SpatialIndex";
+import { globalPerf } from "./PerfMonitor";
+import { createTaskQueue, type TaskQueue } from "../tasks/TaskQueue";
 
 export class Bot extends EventEmitter {
   readonly options: Required<BotOptions>;
@@ -57,6 +60,8 @@ export class Bot extends EventEmitter {
   windows: WindowManager;
 
   /** Direct registry access (fast, no plugin layer) */
+  entityIndex = new SpatialIndex<{ id: number; x: number; y: number; z: number; ref: any }>(8);
+  tasks!: TaskQueue;
   readonly blocks = BlockRegistry;
   readonly entityTypes = EntityRegistry;
   readonly recipes = RecipeRegistry;
@@ -127,7 +132,7 @@ export class Bot extends EventEmitter {
 
     this.world = new World();
     this.pathfinder = new Pathfinder(this.world, {
-      maxNodes: 16000, allowDiagonal: true, jumpHeight: 1, fallHeight: 4, avoidLiquid: true,
+      maxNodes: 20000, allowDiagonal: true, jumpHeight: 1, fallHeight: 4, avoidLiquid: true, enableCache: true,
     });
     this.pathFollower = new PathFollower(this, { sprint: true, jumpObstacles: true, humanized: true, pauseChance: 0.035 });
     this.agent = new Agent(this);
@@ -141,6 +146,7 @@ export class Bot extends EventEmitter {
     this.collect = new CollectBlock(this);
     this.tools = new ToolManager(this);
     this.stateMachine = new StateMachine();
+    this.tasks = createTaskQueue(this);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -419,11 +425,20 @@ export class Bot extends EventEmitter {
   // Entities (core)
   // ═══════════════════════════════════════════════════════════
 
-  nearestEntity(match: (e: Entity) => boolean = () => true): Entity | null {
+  nearestEntity(match: (e: Entity) => boolean = () => true, maxDist = 96): Entity | null {
     const pos = this.entity?.position;
     if (!pos) return null;
+    globalPerf.incr("nearestEntity");
+    // Spatial index first (fast path when entities are indexed)
+    if (this.entityIndex.size > 0) {
+      const hit = this.entityIndex.nearest(pos.x, pos.y, pos.z, maxDist, (p) => {
+        if (p.id === this.entity?.id) return false;
+        return match(p.ref as Entity);
+      });
+      if (hit) return hit.ref as Entity;
+    }
     let best: Entity | null = null;
-    let bestD = Infinity;
+    let bestD = maxDist * maxDist;
     for (const e of this.entities.values()) {
       if (e.id === this.entity?.id) continue;
       if (!match(e)) continue;
@@ -462,8 +477,31 @@ export class Bot extends EventEmitter {
       ...extra,
     };
     this.entities.set(ent.id, ent);
+    this.entityIndex.upsert({
+      id: ent.id,
+      x: ent.position.x,
+      y: ent.position.y,
+      z: ent.position.z,
+      ref: ent,
+    });
     this.emit("entitySpawn", ent);
     return ent;
+  }
+
+  /** Keep spatial index in sync when an entity moves */
+  updateEntityPosition(id: number, position: Vec3) {
+    const e = this.entities.get(id);
+    if (!e) return;
+    e.position = { ...position };
+    this.entityIndex.upsert({ id, x: position.x, y: position.y, z: position.z, ref: e });
+  }
+
+  removeEntity(id: number) {
+    const e = this.entities.get(id);
+    if (!e) return;
+    this.entities.delete(id);
+    this.entityIndex.remove(id);
+    this.emit("entityGone", e);
   }
 
   // ═══════════════════════════════════════════════════════════
