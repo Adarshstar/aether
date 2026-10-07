@@ -1,3 +1,11 @@
+## [1.6.1-alpha] — 2026-10-07
+
+- Live join validation harness (`examples/live-join-validate.ts`, `bun run validate:join`)
+- Expanded BlockRegistry (tags, ores, containers) + ItemRegistry (food/tools)
+- RecipeRegistry.canCraft/craft + more recipes; WindowManager chest/crafting/furnace
+- `bot.craft()`, `openChest()`, `openCrafting()`
+- Pathfinder benchmark suite (`tests/pathfinder-bench.test.ts`)
+
 ## [1.6.0-alpha] — 2026-10-07
 
 ### Performance & advanced systems

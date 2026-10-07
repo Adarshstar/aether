@@ -598,6 +598,28 @@ export class Bot extends EventEmitter {
   }
 
   /** Eat food via AutoEat (real UseItem packets). */
+
+  /** Craft using RecipeRegistry against local inventory (client-side simulation). */
+  craft(recipeId: string): boolean {
+    const recipe = RecipeRegistry.get(recipeId);
+    if (!recipe) {
+      console.warn(`[Bot] Unknown recipe ${recipeId}`);
+      return false;
+    }
+    const ok = RecipeRegistry.craft(recipe, this.inventory);
+    if (ok) console.log(`[Bot] Crafted ${recipeId}`);
+    else console.warn(`[Bot] Cannot craft ${recipeId} — missing ingredients`);
+    return ok;
+  }
+
+  openChest(title = "Chest") {
+    return this.windows.openChest(title);
+  }
+
+  openCrafting() {
+    return this.windows.openCrafting();
+  }
+
   async eat(force = false): Promise<boolean> {
     return this.autoEat.eat({ force });
   }

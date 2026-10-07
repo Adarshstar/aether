@@ -2,6 +2,17 @@
 
 Use this to verify Aether can join a **real** Bedrock Dedicated Server over NetherNet.
 
+## Automated validation
+
+```bash
+# Probe + mock WebRTC contract (no BDS required for mock step)
+bun run validate:join
+
+# Live attempt against running BDS
+MC_HOST=127.0.0.1 MC_PORT=19132 STRICT_WEBRTC=1 bun run validate:join
+# requires: bun add werift
+```
+
 ## Prerequisites
 
 - [ ] Official **BDS 1.26.52.3** downloaded and extracted  
