@@ -75,13 +75,17 @@ export class Bot extends EventEmitter {
 
   private pluginLoader: PluginLoader;
   private connected = false;
+  private intentionalDisconnect = false;
   private authResult: AuthResult | null = null;
   private physicsTimer: ReturnType<typeof setInterval> | null = null;
   private lastPhysicsTime = 0;
   private timeAccumulator = 0;
+  private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private controlState: Record<string, boolean> = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, sneak: false,
+    swim: false, glide: false, fly: false, ascend: false, descend: false,
   };
 
   private readonly PHYSICS_TIMESTEP = 0.05;
@@ -108,6 +112,14 @@ export class Bot extends EventEmitter {
       signalingUrl: options.signalingUrl,
       requireServerIdentity: options.requireServerIdentity ?? false,
       identityDomain: options.identityDomain ?? "",
+      maxRetries: options.maxRetries ?? 3,
+      retryBaseMs: options.retryBaseMs ?? 800,
+      iceGatherTimeoutMs: options.iceGatherTimeoutMs ?? 5000,
+      healthCheckIntervalMs: options.healthCheckIntervalMs ?? 0,
+      signalingTimeoutMs: options.signalingTimeoutMs ?? 15000,
+      autoReconnect: options.autoReconnect ?? false,
+      maxReconnectAttempts: options.maxReconnectAttempts ?? 5,
+      reconnectBaseMs: options.reconnectBaseMs ?? 2000,
     } as Required<BotOptions>;
 
     this.username = this.options.username;
@@ -161,11 +173,20 @@ export class Bot extends EventEmitter {
       identityPrivateKeyPem: this.authResult?.keyPair?.privateKeyPem,
       identityDomain: this.options.identityDomain,
       requireServerIdentity: this.options.requireServerIdentity,
+      maxRetries: this.options.maxRetries,
+      retryBaseMs: this.options.retryBaseMs,
+      iceGatherTimeoutMs: this.options.iceGatherTimeoutMs,
+      healthCheckIntervalMs: this.options.healthCheckIntervalMs,
+      signalingTimeoutMs: this.options.signalingTimeoutMs,
     });
     this.transport.on("error", (e) => this.emit("error", e));
     this.transport.on("disconnected", (r) => {
       this.connected = false;
       this.emit("disconnect", r);
+      this.scheduleReconnect(String(r ?? "transport disconnected"));
+    });
+    this.transport.on("stale", (info) => {
+      console.warn(`[${AETHER_NAME}] Transport stale:`, info);
     });
 
     this.protocol = new ProtocolHandler(
@@ -271,7 +292,10 @@ export class Bot extends EventEmitter {
     this.session.on("chat", (data) => {
       this.emit("chat", data?.sourceName ?? "?", data?.message ?? "");
     });
-    this.session.on("disconnect", (reason) => this.emit("disconnect", reason));
+    this.session.on("disconnect", (reason) => {
+      this.emit("disconnect", reason);
+      this.scheduleReconnect(String(reason ?? "session disconnect"));
+    });
     this.session.on("health", (data) => {
       if (typeof data?.health === "number") this.health = data.health;
       this.emit("health");
@@ -280,9 +304,16 @@ export class Bot extends EventEmitter {
 
     this.emit("login");
     await this.session.startLogin();
+    // Successful connect resets reconnect counter
+    this.reconnectAttempt = 0;
   }
 
   async disconnect(reason = "Client quit"): Promise<void> {
+    this.intentionalDisconnect = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (!this.connected) return;
     this.pathFollower.stop();
     this.stopPhysicsLoop();
@@ -290,6 +321,45 @@ export class Bot extends EventEmitter {
     await this.transport?.disconnect(reason);
     this.connected = false;
     this.emit("disconnect", reason);
+  }
+
+  /**
+   * Schedule an automatic reconnect if enabled and the disconnect was not intentional.
+   */
+  private scheduleReconnect(reason: string): void {
+    if (this.intentionalDisconnect) return;
+    if (!this.options.autoReconnect) return;
+
+    const max = this.options.maxReconnectAttempts;
+    if (max > 0 && this.reconnectAttempt >= max) {
+      console.error(`[${AETHER_NAME}] Max reconnect attempts (${max}) reached — giving up`);
+      this.emit("error", new Error(`Max reconnect attempts reached after: ${reason}`));
+      return;
+    }
+
+    this.reconnectAttempt += 1;
+    const delay = this.options.reconnectBaseMs * Math.pow(2, Math.min(this.reconnectAttempt - 1, 5));
+    console.log(`[${AETHER_NAME}] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}${max ? `/${max}` : ""}) — ${reason}`);
+    this.emit("reconnecting", this.reconnectAttempt, delay);
+
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      try {
+        // Clean up previous transport/session
+        this.session = null;
+        this.protocol = null;
+        this.transport = null;
+        this.connected = false;
+        this.intentionalDisconnect = false;
+        await this.connect();
+        this.emit("reconnected", this.reconnectAttempt);
+        console.log(`[${AETHER_NAME}] Reconnected successfully (attempt ${this.reconnectAttempt})`);
+      } catch (err: any) {
+        console.error(`[${AETHER_NAME}] Reconnect failed:`, err?.message ?? err);
+        this.scheduleReconnect(err?.message ?? "reconnect failed");
+      }
+    }, delay);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -315,10 +385,17 @@ export class Bot extends EventEmitter {
   }
 
   setControlState(
-    control: "forward" | "back" | "left" | "right" | "jump" | "sneak" | "sprint",
+    control:
+      | "forward" | "back" | "left" | "right"
+      | "jump" | "sneak" | "sprint"
+      | "swim" | "glide" | "fly" | "ascend" | "descend",
     state: boolean
   ) {
     this.controlState[control] = state;
+    // Forward controls to the live BDS session so PlayerAuthInput picks them up
+    if (this.session && typeof (this.session as any).setControls === "function") {
+      (this.session as any).setControls({ ...this.controlState });
+    }
   }
 
   getControlState(control: string): boolean {

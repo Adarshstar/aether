@@ -139,12 +139,24 @@ export interface MovementControls {
   jump?: boolean;
   sneak?: boolean;
   sprint?: boolean;
+  /** In water / lava swimming */
+  swim?: boolean;
+  /** Elytra gliding */
+  glide?: boolean;
+  /** Creative / spectator flying */
+  fly?: boolean;
+  /** Ascend while flying / swimming */
+  ascend?: boolean;
+  /** Descend while flying / swimming */
+  descend?: boolean;
 }
 
 /**
  * Map WASD-style controls onto 2193 input flags + analogue move vector.
  * Move vector: X = strafe (left -, right +), Z = forward (+1) / back (-1)
  * matching Bedrock's PlayerAuthInput move vector convention.
+ *
+ * Also handles swim / glide / fly edge cases required by BDS 1.26.52.3.
  */
 export function flagsFromControls(c: MovementControls, prev: MovementControls = {}): bigint {
   let bits = 0n;
@@ -191,6 +203,40 @@ export function flagsFromControls(c: MovementControls, prev: MovementControls = 
     if (!prev.sprint) bits = setFlag(bits, InputFlag.StartSprinting);
   } else if (prev.sprint) {
     bits = setFlag(bits, InputFlag.StopSprinting);
+  }
+
+  // Swimming
+  if (c.swim) {
+    bits = setFlag(bits, InputFlag.AutoJumpingInWater);
+    if (!prev.swim) bits = setFlag(bits, InputFlag.StartSwimming);
+  } else if (prev.swim) {
+    bits = setFlag(bits, InputFlag.StopSwimming);
+  }
+
+  // Elytra gliding
+  if (c.glide) {
+    if (!prev.glide) bits = setFlag(bits, InputFlag.StartGliding);
+  } else if (prev.glide) {
+    bits = setFlag(bits, InputFlag.StopGliding);
+  }
+
+  // Creative / spectator flying
+  if (c.fly) {
+    if (!prev.fly) bits = setFlag(bits, InputFlag.StartFlying);
+  } else if (prev.fly) {
+    bits = setFlag(bits, InputFlag.StopFlying);
+  }
+
+  // Ascend / descend (fly + swim vertical)
+  if (c.ascend) {
+    bits = setFlag(bits, InputFlag.Ascend);
+    bits = setFlag(bits, InputFlag.WantUp);
+    bits = setFlag(bits, InputFlag.ChangeHeight);
+  }
+  if (c.descend) {
+    bits = setFlag(bits, InputFlag.Descend);
+    bits = setFlag(bits, InputFlag.WantDown);
+    bits = setFlag(bits, InputFlag.ChangeHeight);
   }
 
   return bits;

@@ -1,48 +1,41 @@
 # Aether Roadmap
 
-**Current version:** 1.4.1-alpha  
+**Current version:** 1.4.2-alpha  
 **Target:** Bedrock Dedicated Server **1.26.52.3** (Protocol **2193**, NetherNet)
 
-## Completed in 1.4.1-alpha (this release)
+## Completed
 
-- [x] NetherNet join reliability improvements
-  - Exponential backoff retries for probe + signaling
-  - Configurable ICE gather timeout & candidate collection
-  - Health monitor / stale detection
-  - Extra STUN servers + User-Agent
-- [x] Expanded AI planner action set
-  - dig, place, equip, use_item, eat, follow_entity, remember
-  - Richer observation (inventory summary, recent failures)
-- [x] Survival module (health / food / oxygen awareness)
-- [x] Documentation & version bump
+### 1.4.2-alpha
+- [x] Auto-reconnect with exponential backoff + events
+- [x] PlayerAuthInput swim / glide / fly / ascend / descend
+- [x] WebRTC helper module + docs snippet
+- [x] SubChunk request retry under load
+- [x] BotOptions fully wires NetherNet reliability settings
 
-## Phase 1 — Core Stability (next)
+### 1.4.1-alpha
+- [x] NetherNet retries, ICE gather timeout, health monitor
+- [x] Expanded AI planner + Survival module
+
+## Phase 1 — Core Stability (remaining)
 - [ ] Full live join validation against real BDS 1.26.52.3
-- [ ] Robust WebRTC injection (werift) documentation + helper
-- [ ] SubChunkRequest reliability under load
-- [ ] PlayerAuthInput edge cases (sneak, swim, glide)
-- [ ] Automatic reconnect with session resume
+- [ ] End-to-end werift integration test
+- [ ] Session resume / token refresh for long sessions
 
 ## Phase 2 — AI & Gameplay
 - [ ] Goal-oriented task planner (mine X, build schematic, farm)
-- [ ] Long-term memory store (SQLite / JSON)
-- [ ] Multi-bot coordination primitives
+- [ ] Long-term memory store
+- [ ] Multi-bot coordination
 - [ ] Crafting recipe solver
-- [ ] Better combat targeting + threat evaluation
+- [ ] Better combat targeting
 
 ## Phase 3 — Modules
-- [ ] Farming module (plant / harvest / breed)
+- [ ] Farming module
 - [ ] Building / schematic placer
 - [ ] Storage & chest management
 - [ ] Villager trading helper
-- [ ] Redstone interaction helpers
 
 ## Phase 4 — Production
 - [ ] Config profiles & CLI
 - [ ] Metrics / structured logging
 - [ ] Plugin API freeze
-- [ ] Example bots + tutorials
-- [ ] CI against official BDS docker image
-
-## Long-term
-Become the reference open-source AI client engine for official Minecraft Bedrock Dedicated Servers.
+- [ ] CI against official BDS

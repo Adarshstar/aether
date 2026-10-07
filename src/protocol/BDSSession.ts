@@ -59,6 +59,9 @@ export class BDSSession extends EventEmitter {
   private prevControls: MovementControls = {};
   private publisher = { x: 0, y: 64, z: 0, radius: 8 };
   private requestedColumns = new Set<string>();
+  /** Columns waiting for SubChunk response — retried once after timeout */
+  private pendingSubChunks = new Map<string, { cx: number; cz: number; dimension: number; highest?: number; at: number }>();
+  private subChunkRetryTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: BDSSessionOptions) {
     super();
@@ -137,6 +140,12 @@ export class BDSSession extends EventEmitter {
     this.client.onPacket(PacketId.SubChunk, (data) => {
       try {
         applySubChunkPacketToWorld(this.opts.world, data as SubChunkBody);
+        // Clear pending retry for this column if we can identify origin
+        const body = data as SubChunkBody;
+        if (body?.origin) {
+          const key = `${body.dimension ?? 0}:${body.origin.x}:${body.origin.z}`;
+          this.pendingSubChunks.delete(key);
+        }
       } catch { /* ignore */ }
       this.emit("subchunk", data);
     });
@@ -259,6 +268,28 @@ export class BDSSession extends EventEmitter {
     const maxIndex = typeof highest === "number" ? Math.min(19, highest) : 19;
     const req = buildColumnRequest(cx, cz, { dimension, minIndex: -4, maxIndex });
     this.client.send(PacketId.SubChunkRequest, req);
+    this.pendingSubChunks.set(key, { cx, cz, dimension, highest, at: Date.now() });
+    this.ensureSubChunkRetryLoop();
+  }
+
+  private ensureSubChunkRetryLoop() {
+    if (this.subChunkRetryTimer) return;
+    this.subChunkRetryTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of this.pendingSubChunks) {
+        if (now - entry.at < 4000) continue;
+        // One retry then drop
+        console.log(`[BDSSession] SubChunk retry for column ${key}`);
+        const maxIndex = typeof entry.highest === "number" ? Math.min(19, entry.highest) : 19;
+        const req = buildColumnRequest(entry.cx, entry.cz, { dimension: entry.dimension, minIndex: -4, maxIndex });
+        this.client.send(PacketId.SubChunkRequest, req);
+        this.pendingSubChunks.delete(key);
+      }
+      if (this.pendingSubChunks.size === 0 && this.subChunkRetryTimer) {
+        clearInterval(this.subChunkRetryTimer);
+        this.subChunkRetryTimer = null;
+      }
+    }, 2000);
   }
 
   private sendLogin() {

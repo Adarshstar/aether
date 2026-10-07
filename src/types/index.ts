@@ -31,6 +31,25 @@ export interface BotOptions {
   requireServerIdentity?: boolean;
   /** Domain bound into the offer identity JWT */
   identityDomain?: string;
+
+  // ── NetherNet reliability (passed through to NetherNetTransport) ──
+  /** Max retries for probe + signaling (default 3) */
+  maxRetries?: number;
+  /** Base delay ms for exponential backoff (default 800) */
+  retryBaseMs?: number;
+  /** ICE gather timeout ms (default 5000) */
+  iceGatherTimeoutMs?: number;
+  /** Health-check interval ms; 0 = disabled */
+  healthCheckIntervalMs?: number;
+  signalingTimeoutMs?: number;
+
+  // ── Auto-reconnect ──
+  /** Automatically reconnect on disconnect (default false) */
+  autoReconnect?: boolean;
+  /** Max reconnect attempts (default 5). 0 = unlimited */
+  maxReconnectAttempts?: number;
+  /** Base delay between reconnects ms (default 2000) */
+  reconnectBaseMs?: number;
 }
 
 export interface GameState {
@@ -76,6 +95,10 @@ export type BotEventMap = {
   pathStart: (path: Vec3[]) => void;
   pathStop: () => void;
   goalReached: () => void;
+  /** Fired when auto-reconnect is about to attempt a reconnect */
+  reconnecting: (attempt: number, delayMs: number) => void;
+  /** Fired after a successful auto-reconnect */
+  reconnected: (attempt: number) => void;
 };
 
 export type Plugin = (bot: any, options?: any) => void;

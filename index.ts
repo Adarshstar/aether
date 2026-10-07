@@ -107,3 +107,5 @@ export { createMockPeerConnection, MOCK_OFFER_SDP, MOCK_ANSWER_SDP } from "./src
 
 export { Survival, createSurvival } from "./src/survival/Survival";
 export type { SurvivalOptions } from "./src/survival/Survival";
+export { createWeriftPeerConnectionFactory, hasNativeRTC, tryNativePeerConnection, WERIFT_SETUP_DOCS } from "./src/transport/webrtcHelper";
+export type { PeerConnectionFactory } from "./src/transport/webrtcHelper";
