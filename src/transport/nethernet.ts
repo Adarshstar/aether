@@ -206,8 +206,9 @@ export class NetherNetTransport extends Transport {
         raw = { text };
       }
       const networkId = pick<string | number>(raw, [
-        "networkId", "NetworkId", "id", "webrtcNetworkId", "WebRTCNetworkId", "network_id",
+        "networkId", "NetworkId", "webrtcNetworkId", "WebRTCNetworkId", "network_id",
       ], this.options.networkId);
+      // Do not use bare "id" — MOTD JSON often has unrelated numeric fields
       this.joinInfo = {
         raw,
         networkId: String(networkId ?? this.options.networkId),
@@ -220,7 +221,10 @@ export class NetherNetTransport extends Transport {
         maxPlayers: Number(pick(raw, ["maxPlayers", "maxplayers", "max"]) ?? NaN) || undefined,
         gameType: pick<number>(raw, ["gameType", "gametype", "gamemode"]),
       };
-      if (this.joinInfo.networkId) this.options.networkId = this.joinInfo.networkId;
+      // Only adopt probe networkId when non-empty and not the invalid "0" placeholder
+      if (this.joinInfo.networkId && this.joinInfo.networkId !== "0" && this.joinInfo.networkId !== "undefined") {
+        this.options.networkId = this.joinInfo.networkId;
+      }
       console.log(`[NetherNet] Probe OK networkId=${this.options.networkId} protocol=${this.joinInfo.protocol ?? "?"}`);
       return this.joinInfo;
     });

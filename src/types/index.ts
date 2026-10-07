@@ -27,6 +27,8 @@ export interface BotOptions {
   /** Fail instead of entering development loopback */
   strictWebRTC?: boolean;
   signalingUrl?: string;
+  /** NetherNet signaling network id (POST /v1/join/{id}) */
+  networkId?: string;
   /** Refuse SDP answers without a=identity */
   requireServerIdentity?: boolean;
   /** Domain bound into the offer identity JWT */
