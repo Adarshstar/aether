@@ -122,6 +122,11 @@ export {
   injectSdpIdentity,
   applyIdentityToOffer,
   decodeIdentityJwt,
+  decodeIdentityEnvelope,
+  extractFingerprints,
+  buildIdentityAttribute,
+  fingerprintsPayload,
+  detachedES384,
 } from "./src/protocol/sdp";
 export { snappyCompress, snappyDecompress } from "./src/protocol/snappy";
 export {

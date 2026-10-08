@@ -8,6 +8,10 @@
 
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, createHash, randomUUID } from "crypto";
 
+/** Mojang ES384 public key (x5u / identityPublicKey in online client identity JWT) */
+export const MOJANG_BEDROCK_PUBLIC_KEY =
+  "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAECRXueJeTDqNRRgJi/vlRufByu/2G0i2Ebt6YMar5QX/R0DIIyrJMcUpruK4QveTfJSTp3Shlq4Gk34cD/4GUWwkv0DVuzeuB+tXija7HBxii03NHDbPAD0AKnLr2wdAp";
+
 export interface KeyPairMaterial {
   privateKeyPem: string;
   publicKeyPem: string;
@@ -94,10 +98,12 @@ export function buildOfflineChain(username: string, keyPair?: KeyPairMaterial): 
 
   const localChain = encodeJwt(header, payload, kp.privateKeyPem);
 
-  // 1.26.10+ multiplayer token style
+  // 1.26.10+ multiplayer / GameServerToken-style claims
+  // NetherNet structural validation expects xid, mid (PlayFab/UUID), xname, cpk
   const mpPayload = {
     cpk: kp.x509,
     xid: xuid,
+    mid: uuid,
     xname: username,
     nbf: now - 10,
     exp: now + 60 * 60 * 24,
@@ -131,24 +137,22 @@ export function buildOnlineChain(
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "ES384", x5u: kp.x509 };
 
-  // Client JWT signed with our key, typically first in chain
+  // Online client identity JWT (Prismarine login.js):
+  //   payload: { identityPublicKey: <Mojang pubkey>, certificateAuthority: true }
+  //   header.x5u: client public key
+  // Identity/XUID come from Mojang chain JWTs, not this token.
   const clientPayload = {
-    nbf: now - 10,
-    exp: now + 60 * 60 * 24,
-    identityPublicKey: kp.x509,
+    identityPublicKey: MOJANG_BEDROCK_PUBLIC_KEY,
     certificateAuthority: true,
-    extraData: {
-      displayName: username,
-      identity: id,
-      XUID: xuid,
-    },
   };
   const local = encodeJwt(header, clientPayload, kp.privateKeyPem);
-  const chain = [local, ...mojangChain.filter(Boolean)];
+  const filtered = mojangChain.filter(Boolean);
+  const chain = filtered.length ? [local, ...filtered] : [local];
 
   const multiplayerToken = encodeJwt(header, {
     cpk: kp.x509,
     xid: String(xuid),
+    mid: id,
     xname: username,
     nbf: now - 10,
     exp: now + 86400,

@@ -35,15 +35,22 @@ export interface XboxAuthOptions {
   fallbackOffline?: boolean;
 }
 
-const MSA_DEVICE_CODE = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
-const MSA_TOKEN = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+/** Microsoft Live (Xbox) device-code endpoints — same path real Bedrock clients use */
+const MSA_DEVICE_CODE = "https://login.live.com/oauth20_connect.srf";
+const MSA_TOKEN = "https://login.live.com/oauth20_token.srf";
 const XBL_USER = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MC_LOGIN = "https://api.minecraftservices.com/authentication/login_with_xbox";
+const MC_BEDROCK_AUTH = "https://multiplayer.minecraft.net/authentication";
+const PLAYFAB_RP = "https://b980a380.minecraft.playfabapi.com/";
+const PLAYFAB_LOGIN = "https://20ca2.playfabapi.com/Client/LoginWithXbox";
+const MCS_SESSION_START = "https://authorization.franchise.minecraft-services.net/api/v1.0/session/start";
+const MCS_MP_SESSION_START = "https://authorization.franchise.minecraft-services.net/api/v1.0/multiplayer/session/start";
 const MC_PROFILE = "https://api.minecraftservices.com/minecraft/profile";
-/** Public Xbox app client id commonly used by Bedrock tooling */
-const DEFAULT_CLIENT_ID = "00000000441cc96b";
-const SCOPE = "XboxLive.signin offline_access";
+/** Minecraft Bedrock Android title client id (device-code capable) */
+const DEFAULT_CLIENT_ID = "0000000048183522";
+/** Xbox Live MBI scope used by Bedrock / XAL */
+const SCOPE = "service::user.auth.xboxlive.com::MBI_SSL";
 
 export class XboxAuth {
   private options: Required<Pick<XboxAuthOptions, "offline" | "clientId" | "fallbackOffline" | "persistTokens">> & XboxAuthOptions;
@@ -51,12 +58,12 @@ export class XboxAuth {
 
   constructor(options: XboxAuthOptions) {
     this.options = {
+      ...options,
       offline: options.offline ?? true,
       clientId: options.clientId ?? DEFAULT_CLIENT_ID,
       fallbackOffline: options.fallbackOffline ?? true,
       persistTokens: options.persistTokens ?? true,
       cacheDir: options.cacheDir ?? join(process.cwd(), ".aether-auth"),
-      ...options,
     };
   }
 
@@ -183,38 +190,46 @@ export class XboxAuth {
       const xbl = await this.xboxLiveAuth(accessToken);
       const xblToken = xbl.Token as string;
 
-      // 3) XSTS for Minecraft Services
-      const xstsMc = await this.xstsAuth(xblToken, "rp://api.minecraftservices.com/");
-      const uhs = xstsMc.DisplayClaims?.xui?.[0]?.uhs as string;
+      // 3) XSTS for Bedrock multiplayer (chain issuer)
+      const xstsBedrock = await this.xstsAuth(xblToken, "https://multiplayer.minecraft.net/");
+      const uhs = xstsBedrock.DisplayClaims?.xui?.[0]?.uhs as string;
       if (!uhs) throw new Error("XSTS missing user hash (uhs)");
+      let xuid =
+        xstsBedrock.DisplayClaims?.xui?.[0]?.xid ??
+        xstsBedrock.DisplayClaims?.xui?.[0]?.gtg ??
+        "0";
+      let gamerTag =
+        xstsBedrock.DisplayClaims?.xui?.[0]?.gtg ??
+        this.options.username;
 
-      // Optional: XSTS for Xbox Live title (some flows use multiplayer session service)
+      // 4) Bedrock JWT chain from multiplayer.minecraft.net
+      const mojangChain = await this.bedrockChain(uhs, xstsBedrock.Token, keyPair.x509);
+      console.log(`[Auth] Bedrock chain length=${mojangChain.length}`);
+      // Pull display name / XUID from Mojang chain extraData when XSTS omits them
       try {
-        await this.xstsAuth(xblToken, "http://xboxlive.com");
-      } catch {
-        /* non-fatal for MC services login */
+        for (const jwt of mojangChain) {
+          const parts = String(jwt).split(".");
+          if (parts.length < 2) continue;
+          const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+          const extra = payload?.extraData ?? payload;
+          if (extra?.displayName) gamerTag = String(extra.displayName);
+          if (extra?.XUID || extra?.identity) {
+            if (extra.XUID && extra.XUID !== "0") xuid = String(extra.XUID);
+          }
+        }
+      } catch { /* ignore claim parse */ }
+
+      // Real multiplayer Token for Login Certificate envelope (PlayFab → MCS)
+      let multiplayerToken = "";
+      try {
+        multiplayerToken = await this.fetchMultiplayerToken(xblToken, keyPair.x509);
+        console.log(`[Auth] Multiplayer token len=${multiplayerToken.length}`);
+      } catch (e: any) {
+        console.warn("[Auth] Multiplayer token failed:", e?.message ?? e);
       }
 
-      // 4) Minecraft services
-      const mc = await this.minecraftLogin(uhs, xstsMc.Token);
-      const profile = await this.minecraftProfile(mc.access_token).catch((e) => {
-        console.warn("[Auth] Profile fetch failed:", e?.message ?? e);
-        return null;
-      });
-
-      // Bedrock may obtain chain via playfab / other endpoints; keep flexible
-      let mojangChain: string[] = [];
-      if (Array.isArray(mc.chain)) mojangChain = mc.chain;
-      else if (Array.isArray(mc.userChain)) mojangChain = mc.userChain;
-
-      const username = profile?.name ?? this.options.username;
-      const uuid = profile?.id ?? this.options.username;
-      const xuid =
-        xstsMc.DisplayClaims?.xui?.[0]?.xid ??
-        xstsMc.DisplayClaims?.xui?.[0]?.gtg ??
-        "0";
-
-      const built = buildOnlineChain(username, mojangChain, keyPair, String(xuid), uuid);
+      const username = String(gamerTag);
+      const built = buildOnlineChain(username, mojangChain, keyPair, String(xuid));
 
       const result: AuthResult = {
         offline: false,
@@ -222,10 +237,10 @@ export class XboxAuth {
         xuid: built.xuid,
         uuid: built.uuid,
         chain: built.chain,
-        multiplayerToken: built.multiplayerToken,
-        accessToken: mc.access_token,
+        multiplayerToken: multiplayerToken || built.multiplayerToken,
+        accessToken: undefined,
         refreshToken,
-        expiresAt: Date.now() + (mc.expires_in ?? 3600) * 1000,
+        expiresAt: Date.now() + 60 * 60 * 1000,
         keyPair: built.keyPair,
       };
       this.cached = result;
@@ -245,6 +260,7 @@ export class XboxAuth {
     const body = new URLSearchParams({
       client_id: this.options.clientId,
       scope: SCOPE,
+      response_type: "device_code",
     });
     const res = await fetch(MSA_DEVICE_CODE, {
       method: "POST",
@@ -287,8 +303,8 @@ export class XboxAuth {
 
   private async refreshMsa(refreshToken: string): Promise<any> {
     const body = new URLSearchParams({
-      grant_type: "refresh_token",
       client_id: this.options.clientId,
+      grant_type: "refresh_token",
       refresh_token: refreshToken,
       scope: SCOPE,
     });
@@ -305,10 +321,19 @@ export class XboxAuth {
   }
 
   private async xboxLiveAuth(msaAccessToken: string): Promise<any> {
-    const rpsTicket = msaAccessToken.startsWith("d=") ? msaAccessToken : `d=${msaAccessToken}`;
+    // Live.com MBI tokens use t=; some device flows return d= already prefixed.
+    let rpsTicket = msaAccessToken;
+    if (!rpsTicket.startsWith("d=") && !rpsTicket.startsWith("t=")) {
+      // Compact Live tokens typically start with "Ew" → t=; legacy device codes → d=
+      rpsTicket = (rpsTicket.startsWith("Ew") ? "t=" : "d=") + rpsTicket;
+    }
     const res = await fetch(XBL_USER, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "x-xbl-contract-version": "1",
+      },
       body: JSON.stringify({
         Properties: {
           AuthMethod: "RPS",
@@ -338,10 +363,103 @@ export class XboxAuth {
     });
     if (!res.ok) {
       const t = await res.text().catch(() => "");
-      // 2148916233 = no Xbox account, 2148916238 = child account
       throw new Error(`XSTS HTTP ${res.status}: ${t.slice(0, 300)}`);
     }
     return res.json();
+  }
+
+  /** PlayFab → Minecraft services multiplayer signed token (Login Token field). */
+  private async fetchMultiplayerToken(xblUserToken: string, publicKey: string): Promise<string> {
+    const xstsPf = await this.xstsAuth(xblUserToken, PLAYFAB_RP);
+    const uhs = xstsPf.DisplayClaims?.xui?.[0]?.uhs as string;
+    if (!uhs) throw new Error("PlayFab XSTS missing uhs");
+
+    const pfRes = await fetch(PLAYFAB_LOGIN, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        CreateAccount: true,
+        TitleId: "20CA2",
+        XboxToken: `XBL3.0 x=${uhs};${xstsPf.Token}`,
+        InfoRequestParameters: {
+          GetPlayerProfile: true,
+          GetUserAccountInfo: true,
+        },
+      }),
+    });
+    if (!pfRes.ok) {
+      const t = await pfRes.text().catch(() => "");
+      throw new Error(`PlayFab login HTTP ${pfRes.status}: ${t.slice(0, 200)}`);
+    }
+    const pf = await pfRes.json();
+    const sessionTicket = pf?.data?.SessionTicket;
+    if (!sessionTicket) throw new Error("PlayFab missing SessionTicket");
+
+    const sessRes = await fetch(MCS_SESSION_START, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device: {
+          applicationType: "MinecraftPE",
+          gameVersion: "1.26.52",
+          id: "aether-device-001",
+          memory: String(8 * 1024 * 1024 * 1024),
+          platform: "Windows10",
+          playFabTitleId: "20CA2",
+          storePlatform: "uwp.store",
+          type: "Windows10",
+        },
+        user: { token: sessionTicket, tokenType: "PlayFab" },
+      }),
+    });
+    if (!sessRes.ok) {
+      const t = await sessRes.text().catch(() => "");
+      throw new Error(`MCS session HTTP ${sessRes.status}: ${t.slice(0, 200)}`);
+    }
+    const sess = await sessRes.json();
+    const authHeader = sess?.result?.authorizationHeader;
+    if (!authHeader) throw new Error("MCS session missing authorizationHeader");
+
+    const mpRes = await fetch(MCS_MP_SESSION_START, {
+      method: "POST",
+      headers: {
+        accept: "*/*",
+        authorization: authHeader,
+        "content-type": "application/json",
+        "User-Agent": "libhttpclient/1.0.0.0",
+      },
+      body: JSON.stringify({ publicKey }),
+    });
+    if (!mpRes.ok) {
+      const t = await mpRes.text().catch(() => "");
+      throw new Error(`MCS multiplayer HTTP ${mpRes.status}: ${t.slice(0, 200)}`);
+    }
+    const mp = await mpRes.json();
+    const signed = mp?.result?.signedToken || mp?.signedToken || "";
+    if (!signed) throw new Error("MCS multiplayer missing signedToken");
+    return signed;
+  }
+
+    /** Request Mojang-signed Bedrock login chain (protocol login packet). */
+  private async bedrockChain(uhs: string, xstsToken: string, identityPublicKey: string): Promise<string[]> {
+    const res = await fetch(MC_BEDROCK_AUTH, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `XBL3.0 x=${uhs};${xstsToken}`,
+        "User-Agent": "MCPE/Android",
+        "Client-Version": "1.26.52",
+      },
+      body: JSON.stringify({ identityPublicKey }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Bedrock chain HTTP ${res.status}: ${t.slice(0, 300)}`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data)) return data as string[];
+    if (Array.isArray(data?.chain)) return data.chain as string[];
+    throw new Error("Bedrock chain response missing chain array");
   }
 
   private async minecraftLogin(uhs: string, xstsToken: string): Promise<any> {

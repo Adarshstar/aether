@@ -93,8 +93,10 @@ export class BDSSession extends EventEmitter {
         this.client.setCompressionThreshold(data.compressionThreshold, alg);
         this.compressionReady = true;
       }
+      console.log("[BDSSession] NetworkSettings", data);
       this.emit("network_settings", data);
-      this.client.send(PacketId.ClientCacheStatus, { enabled: false });
+      // ClientCacheStatus is optional; some BDS builds parse-fail on unexpected pre-login packets.
+      // this.client.send(PacketId.ClientCacheStatus, { enabled: false });
       this.sendLogin();
     });
 
@@ -108,6 +110,10 @@ export class BDSSession extends EventEmitter {
     this.client.onPacket(PacketId.ServerToClientHandshake, (data) => {
       this.emit("server_handshake", data);
       this.client.send(PacketId.ClientToServerHandshake, {});
+    });
+
+    this.client.onPacket(PacketId.PacketViolationWarning, (data) => {
+      console.log("[BDSSession] PacketViolationWarning", data);
     });
 
     this.client.onPacket(PacketId.ResourcePacksInfo, () => {
@@ -351,14 +357,21 @@ export class BDSSession extends EventEmitter {
   }
 
   private sendLogin() {
-    const auth = this.opts.auth;
+    const auth = this.opts.auth as any;
+    console.log(`[BDSSession] Login chain=${auth?.chain?.length ?? 0} user=${this.opts.username} offline=${this.opts.offline} hasKey=${!!auth?.keyPair?.privateKeyPem}`);
     this.client.send(PacketId.Login, {
       protocol: ProtocolVersion,
       username: this.opts.username,
       offline: this.opts.offline,
       chain: auth?.chain ?? [],
-      multiplayerToken: auth?.multiplayerToken,
-    });
+      uuid: auth?.uuid,
+      xuid: auth?.xuid,
+      privateKeyPem: auth?.keyPair?.privateKeyPem,
+      identityPublicKey: auth?.keyPair?.x509,
+      x509: auth?.keyPair?.x509,
+      serverAddress: `${(this.opts as any).host ?? ""}:${(this.opts as any).port ?? ""}`,
+      multiplayerToken: auth?.multiplayerToken ?? "",
+          });
   }
 
   private onPlayerSpawnStatus() {

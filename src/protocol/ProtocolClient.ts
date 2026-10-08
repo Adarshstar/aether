@@ -72,25 +72,23 @@ export class ProtocolClient extends EventEmitter {
     try {
       const complete = this.fragments.push(buf);
       if (!complete) return;
-      const payload = decompressBatch(complete, this.compressionEnabled);
-      try {
-        const { id, data } = decodeGamePacket(payload);
-        this.dispatch(id, data);
-        return;
-      } catch {
-        /* try batch of inner packets */
-      }
-      const parts = decodeBatch(payload);
-      if (!parts.length) {
-        this.emit("raw", payload);
-        return;
-      }
-      for (const part of parts) {
+      let payload = decompressBatch(complete, this.compressionEnabled);
+      // A single data-channel message may contain multiple length-prefixed game packets.
+      let offset = 0;
+      let parsed = 0;
+      while (offset < payload.length) {
         try {
-          const { id, data } = decodeGamePacket(part);
+          const slice = payload.subarray(offset);
+          const { id, data, bytesRead } = decodeGamePacket(slice);
+          if (!bytesRead || bytesRead <= 0) break;
+          console.log(`[Protocol] RX id=${id} keys=${Object.keys(data || {}).join(",")} off=${offset}`);
           this.dispatch(id, data);
+          offset += bytesRead;
+          parsed++;
         } catch {
-          this.emit("raw", part);
+          // Fallback: try treating remainder as raw
+          if (parsed === 0) this.emit("raw", payload.subarray(offset));
+          break;
         }
       }
     } catch (err) {

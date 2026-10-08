@@ -1,3 +1,4 @@
+import { sign } from "node:crypto";
 /**
  * Aether packet codec layer — protocol 2193
  * Every PacketId has encode/decode. Critical packets are high-fidelity.
@@ -153,39 +154,100 @@ function registerAll() {
     encode(data) {
       const w = new BinaryWriter();
       w.writeI32BE(data.protocol ?? ProtocolVersion);
-      const chainStr = JSON.stringify({ chain: data.chain ?? [] });
-      const clientJwt = typeof data.clientJwt === "string"
-        ? data.clientJwt
-        : JSON.stringify({
-            ThirdPartyName: data.username ?? "",
-            ThirdPartyNameOnly: !!data.offline,
-            ClientRandomId: Date.now(),
-            ServerAddress: data.serverAddress ?? "",
-            LanguageCode: "en_US",
-            GameVersion: "1.26.52",
-            DeviceModel: "Aether",
-            DeviceOS: 7,
-            DefaultInputMode: 1,
-            CurrentInputMode: 1,
-            GuiScale: 0,
-            UIProfile: 0,
-            SkinId: "Standard_Custom",
-            SkinData: "",
-            CapeData: "",
-            PremiumSkin: false,
-            PersonaSkin: false,
-            CapeOnClassicSkin: false,
-            SelfSignedId: data.uuid ?? "",
-            CompatibleWithClientSideChunkGen: true,
+      // 1.21.90+ / protocol ~818+: identity envelope with Certificate + AuthenticationType + Token
+      const chainArr = data.chain ?? [];
+      // Prefer 1.21.90+ envelope; fall back to legacy {chain} when explicitly requested
+      const useEnvelope = data.legacyIdentity !== true;
+      const chainStr = useEnvelope
+        ? JSON.stringify({
+            Certificate: JSON.stringify({ chain: chainArr }),
+            AuthenticationType: data.offline ? 2 : 0,
+            Token: data.multiplayerToken ?? data.token ?? "",
+          })
+        : JSON.stringify({ chain: chainArr });
+
+      // Client data MUST be an ES384 JWT (not raw JSON). Plain JSON is rejected by BDS.
+      let clientJwt: string;
+      if (typeof data.clientJwt === "string" && data.clientJwt.includes(".")) {
+        clientJwt = data.clientJwt;
+      } else {
+        const solid = Buffer.alloc(32 * 64 * 4, 0);
+        for (let i = 3; i < solid.length; i += 4) solid[i] = 255; // opaque black
+        const skinDataB64 = solid.toString("base64");
+        const geomVerB64 = Buffer.from("0.0.0").toString("base64");
+        const payload: Record<string, unknown> = {
+          AnimatedImageData: [],
+          ArmSize: "wide",
+          CapeData: "",
+          CapeId: "",
+          CapeImageHeight: 0,
+          CapeImageWidth: 0,
+          CapeOnClassicSkin: false,
+          ClientRandomId: data.clientRandomId ?? Date.now(),
+          CompatibleWithClientSideChunkGen: false,
+          CurrentInputMode: 1,
+          DefaultInputMode: 1,
+          DeviceId: data.uuid ?? data.deviceId ?? "aether-device",
+          DeviceModel: "Aether",
+          DeviceOS: data.deviceOS ?? 1, // Android
+          GameVersion: "1.26.52",
+          GuiScale: 0,
+          IsEditorMode: false,
+          LanguageCode: "en_US",
+          OverrideSkin: false,
+          PersonaPieces: [],
+          PersonaSkin: false,
+          PieceTintColors: [],
+          PlatformOfflineId: "",
+          PlatformOnlineId: data.xuid ? String(data.xuid) : "",
+          PlayFabId: (data.uuid ?? "0000000000000000").replace(/-/g, "").slice(0, 16).toLowerCase(),
+          PremiumSkin: false,
+          SelfSignedId: data.uuid ?? "",
+          ServerAddress: data.serverAddress ?? "",
+          SkinAnimationData: "",
+          SkinColor: "#0",
+          SkinData: skinDataB64,
+          SkinGeometryData: "",
+          SkinGeometryDataEngineVersion: geomVerB64,
+          SkinId: data.uuid ?? "Standard_Custom",
+          SkinImageHeight: 32,
+          SkinImageWidth: 64,
+          SkinResourcePatch: Buffer.from(
+            JSON.stringify({ geometry: { default: "geometry.humanoid.custom" } })
+          ).toString("base64"),
+          ThirdPartyName: data.username ?? "",
+          TrustedSkin: false,
+          UIProfile: 0,
+        };
+        if (data.privateKeyPem) {
+          const b64url = (buf: Buffer | string) =>
+            Buffer.from(buf).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+          const header = { alg: "ES384", x5u: data.identityPublicKey ?? data.x509 ?? "" };
+          const h = b64url(JSON.stringify(header));
+          const p = b64url(JSON.stringify(payload));
+          const signingInput = `${h}.${p}`;
+          const sig = sign("SHA384", Buffer.from(signingInput), {
+            key: data.privateKeyPem,
+            dsaEncoding: "ieee-p1363",
           });
+          clientJwt = `${signingInput}.${b64url(sig)}`;
+        } else {
+          // Offline fallback: unsigned JSON (may still be rejected by online BDS)
+          clientJwt = JSON.stringify(payload);
+        }
+      }
+
       const inner = new BinaryWriter();
       const chainBuf = Buffer.from(chainStr, "utf8");
       inner.writeU32(chainBuf.length);
       inner.writeRaw(chainBuf);
-      const jwtBuf = Buffer.from(data.multiplayerToken ?? clientJwt, "utf8");
+      const jwtBuf = Buffer.from(clientJwt, "utf8");
       inner.writeU32(jwtBuf.length);
       inner.writeRaw(jwtBuf);
       const body = inner.toBuffer();
+      if (typeof console !== "undefined") {
+        console.log(`[Login] authInfoLen=${chainBuf.length} clientJwtLen=${jwtBuf.length} authHead=${chainStr.slice(0, 120)}`);
+      }
       w.writeVarInt(body.length);
       return Buffer.concat([w.toBuffer(), body]);
     },
@@ -285,24 +347,33 @@ function registerAll() {
   registerCodec(PacketId.ResourcePackClientResponse, {
     encode(data) {
       const w = new BinaryWriter();
+      // 1.26+ (gophertunnel): Varuint32 response + string name [+ pack list if downloading]
+      // 0 cancel, 1 downloading, 2 downloadingfinished, 3 resourcepackstackfinished
       const map: Record<string, number> = {
-        none: 0, refused: 1, send_packs: 2, have_all_packs: 3, completed: 4,
+        refused: 0, cancel: 0,
+        send_packs: 1, downloading: 1,
+        have_all_packs: 2, downloadingfinished: 2,
+        completed: 3, resourcepackstackfinished: 3,
       };
-      const st = typeof data.responseStatus === "string"
-        ? (map[data.responseStatus] ?? 4)
-        : (data.responseStatus ?? 4);
-      w.writeU8(st);
-      w.writeVarInt((data.resourcePackIds ?? []).length);
-      for (const id of data.resourcePackIds ?? []) w.writeString(id);
+      const names = ["cancel", "downloading", "downloadingfinished", "resourcepackstackfinished"];
+      let st = typeof data.responseStatus === "string"
+        ? (map[data.responseStatus] ?? 2)
+        : (data.responseStatus ?? 2);
+      if (st > 3) st = 3;
+      w.writeVarInt(st);
+      w.writeString(names[st] ?? "downloadingfinished");
+      if (st === 1) {
+        const ids: string[] = data.resourcePackIds ?? [];
+        w.writeVarInt(ids.length);
+        for (const id of ids) w.writeString(id);
+      }
       return w.toBuffer();
     },
     decode(buf) {
       const r = new BinaryReader(buf);
-      const responseStatus = r.readU8();
-      const n = r.remaining ? r.readVarInt() : 0;
-      const resourcePackIds: string[] = [];
-      for (let i = 0; i < n && r.remaining > 0; i++) resourcePackIds.push(r.readString());
-      return { responseStatus, resourcePackIds };
+      const responseStatus = r.readVarInt();
+      const name = r.remaining ? r.readString() : "";
+      return { responseStatus, name };
     },
   }, true);
 

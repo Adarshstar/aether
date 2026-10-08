@@ -1,7 +1,14 @@
 import { describe, test, expect } from "bun:test";
 import {
-  parseSdpIdentity, injectSdpIdentity, applyIdentityToOffer, decodeIdentityJwt,
-  generateBedrockKeyPair, buildOfflineChain, MOCK_OFFER_SDP, MOCK_ANSWER_SDP,
+  parseSdpIdentity,
+  injectSdpIdentity,
+  applyIdentityToOffer,
+  decodeIdentityEnvelope,
+  extractFingerprints,
+  generateBedrockKeyPair,
+  buildOfflineChain,
+  MOCK_OFFER_SDP,
+  MOCK_ANSWER_SDP,
 } from "../index";
 
 describe("SDP identity", () => {
@@ -13,14 +20,26 @@ describe("SDP identity", () => {
     expect(info.iceUfrag).toBe("aeth");
   });
 
+  test("extract structured fingerprints", () => {
+    const fps = extractFingerprints(MOCK_OFFER_SDP);
+    expect(fps.length).toBe(1);
+    expect(fps[0].algorithm).toBe("sha-256");
+    expect(fps[0].digest.length).toBeGreaterThan(10);
+  });
+
   test("inject then parse a=identity", () => {
     const sdp = injectSdpIdentity(MOCK_OFFER_SDP, "header.payload.sig");
     const info = parseSdpIdentity(sdp);
     expect(info.identity).toBe("header.payload.sig");
     expect(sdp).toContain("a=fingerprint:");
+    // identity line placed before first m=
+    const idIdx = sdp.indexOf("a=identity:");
+    const mIdx = sdp.indexOf("m=");
+    expect(idIdx).toBeGreaterThan(-1);
+    expect(mIdx).toBeGreaterThan(idIdx);
   });
 
-  test("sign ES384 assertion bound to fingerprints", () => {
+  test("sign NetherNet identity envelope (detached ES384 + base64)", () => {
     const kp = generateBedrockKeyPair();
     const chain = buildOfflineChain("Aether", kp);
     const sdp = applyIdentityToOffer(MOCK_OFFER_SDP, {
@@ -29,11 +48,18 @@ describe("SDP identity", () => {
       domain: "aether.test",
     });
     const info = parseSdpIdentity(sdp);
-    expect(info.identity?.split(".").length).toBe(3);
-    const claims = decodeIdentityJwt(info.identity!);
-    expect(claims?.domain).toBe("aether.test");
-    expect(Array.isArray(claims?.fingerprints)).toBe(true);
-    expect((claims?.fingerprints as string[])[0]).toContain("sha-256");
+    expect(info.identity).toBeTruthy();
+    // Outer value is base64 of { assertion, idp }
+    const env = decodeIdentityEnvelope(info.identity!);
+    expect(env).toBeTruthy();
+    expect(env!.idp?.domain).toBe("aether.test");
+    expect(env!.idp?.protocol).toBe("default");
+    expect(typeof env!.assertion).toBe("string");
+    const inner = JSON.parse(env!.assertion!);
+    expect(inner.token).toBe(chain.multiplayerToken);
+    // fingerprints is detached ES384 JWS: header..signature
+    expect(inner.fingerprints.split(".").length).toBe(3);
+    expect(inner.fingerprints.includes("..")).toBe(true);
   });
 
   test("answer without identity is detectable", () => {

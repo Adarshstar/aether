@@ -134,7 +134,7 @@ export class NetherNetTransport extends Transport {
     this.options = {
       host: options.host,
       port: options.port,
-      networkId: options.networkId ?? "0",
+      networkId: options.networkId ?? "1",
       offline: options.offline ?? true,
       signalingTimeoutMs: options.signalingTimeoutMs ?? 8000,
       createPeerConnection: options.createPeerConnection,
@@ -436,39 +436,61 @@ export class NetherNetTransport extends Transport {
     }
 
     const joinUrl = `${this.baseUrl()}/v1/join/${encodeURIComponent(networkId)}`;
-    console.log(`[NetherNet] POST ${joinUrl} (candidates=${this.iceCandidates.length})`);
+    console.log(`[NetherNet] POST ${joinUrl} (candidates=${this.iceCandidates.length}, sdp=${sdp.length}b)`);
 
-    const body = {
-      sdp,
-      type: local.type ?? "offer",
-      offer: { sdp, type: local.type ?? "offer" },
-      candidates: this.iceCandidates.map((c: any) =>
-        typeof c === "string" ? c : (c.candidate ?? c)
-      ),
-    };
-
-    // Retry signaling POST with backoff
-    const answerJson = await this.withRetry("signaling", async () => {
+    // Mojang NetherNet HTTP Signaling (Partner Onboarding Guide):
+    //   Content-Type: application/sdp
+    //   Body: raw SDP offer text (UTF-8), including a=identity and all ICE candidates
+    //   Response: raw SDP answer (application/sdp) on 2xx
+    // Numeric body "37" = ErrorCodeIdentityNotAllowed
+    const answerSdp = await this.withRetry("signaling", async () => {
       const res = await fetch(joinUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "User-Agent": "Aether/1.7.1",
+          "Content-Type": "application/sdp",
+          Accept: "application/sdp, application/json, text/plain, */*",
+          "User-Agent": "MCPE/Android",
+          "Client-Version": "1.26.52",
         },
-        body: JSON.stringify(body),
+        body: sdp,
         signal: AbortSignal.timeout(timeout),
       });
 
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => "");
-        throw new Error(`Signaling join HTTP ${res.status}: ${errBody.slice(0, 200)}`);
+      const text = await res.text();
+      const trimmed = text.trim();
+
+      // BDS may return plain error codes (e.g. "37" IdentityNotAllowed) with 200
+      if (/^\d+$/.test(trimmed)) {
+        const code = Number(trimmed);
+        const names: Record<number, string> = {
+          37: "IdentityNotAllowed",
+          1: "DestinationNotLoggedIn",
+          2: "NegotiationTimeout",
+          3: "WrongTransportVersion",
+        };
+        throw new Error(
+          `Signaling error code ${code} (${names[code] ?? "unknown"})${res.status !== 200 ? ` HTTP ${res.status}` : ""}`
+        );
       }
 
-      return res.json().catch(async () => ({ sdp: await res.text() }));
+      if (!res.ok) {
+        throw new Error(`Signaling join HTTP ${res.status}: ${trimmed.slice(0, 200)}`);
+      }
+
+      // Prefer raw SDP; some proxies wrap in JSON
+      if (trimmed.startsWith("v=")) return trimmed;
+      try {
+        const j = JSON.parse(trimmed);
+        const extracted = extractSdp(j);
+        if (extracted?.sdp) return extracted.sdp;
+      } catch {
+        /* not JSON */
+      }
+      if (trimmed.includes("v=")) return trimmed;
+      throw new Error(`Signaling response missing sdp: ${trimmed.slice(0, 120)}`);
     });
 
-    const parsed = extractSdp(answerJson);
+    const parsed = extractSdp(answerSdp) ?? { sdp: answerSdp, type: "answer" };
     if (!parsed?.sdp) throw new Error("Signaling response missing sdp");
 
     const ident = parseSdpIdentity(parsed.sdp);
@@ -479,16 +501,13 @@ export class NetherNetTransport extends Transport {
       throw new Error("Signaling answer missing a=identity (real clients refuse this)");
     }
 
-    await pc.setRemoteDescription({ type: parsed.type || "answer", sdp: parsed.sdp });
+    // Strip a=identity before setRemoteDescription — WebRTC stacks reject unknown attributes
+    const cleanSdp = parsed.sdp
+      .split(/\r?\n/)
+      .filter((l) => !l.startsWith("a=identity:"))
+      .join("\r\n");
 
-    const extra = answerJson.candidates ?? answerJson.iceCandidates ?? [];
-    if (Array.isArray(extra) && typeof pc.addIceCandidate === "function") {
-      for (const c of extra) {
-        try {
-          await pc.addIceCandidate(typeof c === "string" ? { candidate: c } : c);
-        } catch { /* ignore */ }
-      }
-    }
+    await pc.setRemoteDescription({ type: parsed.type || "answer", sdp: cleanSdp });
 
     await openPromise;
     this.startHealthMonitor();
