@@ -380,24 +380,56 @@ function registerAll() {
   registerCodec(PacketId.Text, {
     encode(data) {
       const w = new BinaryWriter();
-      w.writeU8(data.type ?? 1);
+      const type = data.type ?? 1;
       w.writeU8(data.needsTranslation ? 1 : 0);
-      w.writeString(data.sourceName ?? "");
-      w.writeString(data.message ?? "");
-      w.writeString(data.xuid ?? "");
+      let category = 0;
+      if (type === 1 || type === 7 || type === 8) category = 1;
+      else if (type === 2 || type === 3 || type === 4) category = 2;
+      w.writeU8(category);
+      w.writeU8(type);
+      if (type === 1 || type === 7 || type === 8) {
+        w.writeString(data.sourceName ?? "");
+        w.writeString(data.message ?? " ");
+      } else if (type === 2 || type === 3 || type === 4) {
+        w.writeString(data.message ?? " ");
+        const params = data.parameters ?? [];
+        w.writeVarInt(params.length);
+        for (const p of params) w.writeString(p);
+      } else {
+        w.writeString(data.message ?? " ");
+      }
+      w.writeString(data.xuid ?? data.xboxUserId ?? "");
       w.writeString(data.platformChatId ?? "");
+      if (data.filteredMessage != null && data.filteredMessage !== "") {
+        w.writeU8(1);
+        w.writeString(data.filteredMessage);
+      } else {
+        w.writeU8(0);
+      }
       return w.toBuffer();
     },
     decode(buf) {
       const r = new BinaryReader(buf);
-      return {
-        type: r.readU8(),
-        needsTranslation: r.readU8(),
-        sourceName: r.readString(),
-        message: r.readString(),
-        xuid: r.remaining ? r.readString() : "",
-        platformChatId: r.remaining ? r.readString() : "",
-      };
+      const needsTranslation = !!r.readU8();
+      const category = r.readU8();
+      const type = r.readU8();
+      let sourceName = "", message = "";
+      const parameters: string[] = [];
+      if (type === 1 || type === 7 || type === 8) {
+        sourceName = r.readString();
+        message = r.readString();
+      } else if (type === 2 || type === 3 || type === 4) {
+        message = r.readString();
+        const n = r.readVarInt();
+        for (let i = 0; i < n; i++) parameters.push(r.readString());
+      } else {
+        message = r.readString();
+      }
+      const xuid = r.remaining ? r.readString() : "";
+      const platformChatId = r.remaining ? r.readString() : "";
+      let filteredMessage: string | undefined;
+      if (r.remaining && r.readU8()) filteredMessage = r.readString();
+      return { type, needsTranslation, category, sourceName, message, parameters, xuid, platformChatId, filteredMessage };
     },
   }, true);
 
@@ -482,7 +514,7 @@ function registerAll() {
       w.writeRaw(encodeBitset(bits, PLAYER_AUTH_INPUT_BITS));
       w.writeVarInt(data.inputMode ?? 1);
       w.writeVarInt(data.playMode ?? 0);
-      w.writeZigZag32(data.interactionModel ?? 2);
+      w.writeVarInt(data.interactionModel ?? 2);
       w.writeF32(data.interactPitch ?? data.pitch ?? 0);
       w.writeF32(data.interactYaw ?? data.yaw ?? 0);
       w.writeVarLong(BigInt(data.tick ?? 0));
@@ -513,7 +545,7 @@ function registerAll() {
         inputDataNum: Number(inputData & 0xffffffffn),
         inputMode: r2.remaining ? r2.readVarInt() : 1,
         playMode: r2.remaining ? r2.readVarInt() : 0,
-        interactionModel: r2.remaining ? r2.readZigZag32() : 2,
+        interactionModel: r2.remaining ? r2.readVarInt() : 2,
         interactPitch: r2.remaining >= 4 ? r2.readF32() : pitch,
         interactYaw: r2.remaining >= 4 ? r2.readF32() : yaw,
         tick: r2.remaining ? Number(r2.readVarLong()) : 0,

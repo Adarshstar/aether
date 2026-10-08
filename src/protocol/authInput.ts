@@ -75,7 +75,7 @@ export const InputFlag = {
   SneakPressedRaw: 63,
   SneakCurrentRaw: 64,
   InternalUpdate: 65,
-  Count: 67,
+  Count: 66,
 } as const;
 
 export type InputFlagName = keyof typeof InputFlag;
