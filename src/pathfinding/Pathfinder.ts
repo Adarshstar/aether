@@ -77,6 +77,8 @@ export class Pathfinder {
   private pool: PathNode[] = [];
   private allocatedThisSearch: PathNode[] = [];
   private neighborsBuf: { x: number; y: number; z: number; cost: number }[] = [];
+  /** V8: Pathfinding support for ladders/vines/scaffolding-like blocks */
+  private climbableBlocks = new Set([65, 106, 107]); // Placeholder Bedrock IDs
 
   constructor(world: World, opts: PathfinderOptions = {}) {
     this.world = world;

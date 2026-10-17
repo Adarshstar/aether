@@ -8,9 +8,8 @@ import type { Bot } from "../core/Bot";
 import type { Agent } from "../ai/Agent";
 import type { ExploreModule } from "../explore/Explore";
 import type { HumanBehavior } from "../human/HumanBehavior";
-import { Combat } from "../combat/Combat";
+import { CombatController as Combat } from "../combat/Combat";
 import { distance } from "../types";
-import { Priority } from "./Arbitration";
 import { Priority } from "./Arbitration";
 
 export type DecisionMode =

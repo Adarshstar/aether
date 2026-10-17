@@ -10,6 +10,7 @@
 import { createServer, type Server } from "http";
 import type { Bot } from "../core/Bot";
 import type { FallbackLLMClient } from "../ai/FallbackLLM";
+import { globalPerf } from "../core/PerfMonitor";
 
 export interface HealthDashboardOptions {
   port?: number;
@@ -32,10 +33,6 @@ export class HealthDashboard {
       llmFallback: opts.llmFallback ?? null,
     };
   }
-
-import { globalPerf } from "../core/PerfMonitor";
-
-// ... existing code ...
 
   private snapshot() {
     const e = this.bot.entity;

@@ -67,7 +67,7 @@ export type { BiomeDef } from "./src/biome/Biome";
 // Gameplay helpers
 export { PhysicsEngine } from "./src/physics/Physics";
 export type { PhysicsState, ControlState, PhysicsConfig } from "./src/physics/Physics";
-export { Combat } from "./src/combat/Combat";
+export { CombatController as Combat } from "./src/combat/Combat";
 export { PvP } from "./src/pvp/PvP";
 export { AutoEat } from "./src/autoeat/AutoEat";
 export { CollectBlock } from "./src/collect/CollectBlock";

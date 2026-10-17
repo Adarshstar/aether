@@ -13,7 +13,7 @@ import { Pathfinder } from "../pathfinding/Pathfinder";
 import { PathFollower } from "../pathfinding/PathFollower";
 import { Agent } from "../ai/Agent";
 import { Inventory } from "../inventory/Inventory";
-import { Combat } from "../combat/Combat";
+import { CombatController as Combat } from "../combat/Combat";
 import { WindowManager } from "../windows/Window";
 import { XboxAuth } from "../auth/XboxAuth";
 import type { AuthResult } from "../auth/XboxAuth";
