@@ -11,15 +11,22 @@ You are continuing development of **Aether**, a from-scratch Minecraft **Bedrock
 |-------|--------|
 | **Name** | Aether |
 | **npm name** | `aether-bot` |
-| **Version** | **1.4.0-alpha** |
+| **Version** | **1.12.0-alpha (V8-Alpha engine)** |
 | **Target** | Bedrock Dedicated Server **1.26.52.3** |
 | **Protocol** | **2193** |
 | **Transport** | **NetherNet** (WebRTC + HTTP signaling). RakNet deprecated/removed on modern BDS. |
 | **Language** | TypeScript, run with **Bun** |
 | **License** | MIT |
-| **Root path** | `bedrock-ai-engine/` (zip may be named `aether-bot.zip`) |
+| **Root path** | repo root (this is `Adarshstar/aether` on GitHub) |
 
 **Mission:** High-level bot API + pathfinding + AI agent (ChatGPT/OpenAI-compatible) that can eventually **play** on real BDS over NetherNet.
+
+**V8 status:** engine internals hardened — sparse chunk storage, real pathfinder
+node pooling, DecisionEngine/Agent priority arbitration, merged CombatController,
+verified protocol fidelity (found + fixed a real PlayerAuthInput encode/decode
+mismatch), PerfMonitor wired into HealthDashboard, persistent player memory,
+Guardian Loop v2 supervisor. See `CHANGELOG.md` for the full V8 entry and
+`ROADMAP_V9.md` for what's next.
 
 ---
 
